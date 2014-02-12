@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -116,7 +117,6 @@ void ngx_mutex_unlock(ngx_mutex_t *m);
 
 
 typedef int (*ngx_rfork_thread_func_pt)(void *arg);
-
 
 
 #endif /* _NGX_FREEBSD_RFORK_THREAD_H_INCLUDED_ */

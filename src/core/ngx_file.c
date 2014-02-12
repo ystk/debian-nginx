@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -807,7 +808,7 @@ failed:
  *     reallocated if ctx->alloc is nonzero
  *
  * ctx->alloc - a size of data structure that is allocated at every level
- *     and is initilialized by ctx->init_handler()
+ *     and is initialized by ctx->init_handler()
  *
  * ctx->log - a log
  *
@@ -825,8 +826,7 @@ ngx_walk_tree(ngx_tree_ctx_t *ctx, ngx_str_t *tree)
     ngx_str_t   file, buf;
     ngx_dir_t   dir;
 
-    buf.len = 0;
-    buf.data = NULL;
+    ngx_str_null(&buf);
 
     ngx_log_debug1(NGX_LOG_DEBUG_CORE, ctx->log, 0,
                    "walk tree \"%V\"", tree);
@@ -927,6 +927,7 @@ ngx_walk_tree(ngx_tree_ctx_t *ctx, ngx_str_t *tree)
                            "tree file \"%s\"", file.data);
 
             ctx->size = ngx_de_size(&dir);
+            ctx->fs_size = ngx_de_fs_size(&dir);
             ctx->access = ngx_de_access(&dir);
             ctx->mtime = ngx_de_mtime(&dir);
 

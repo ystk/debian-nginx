@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -13,7 +14,6 @@ static void ngx_http_read_client_request_body_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_do_read_client_request_body(ngx_http_request_t *r);
 static ngx_int_t ngx_http_write_request_body(ngx_http_request_t *r,
     ngx_chain_t *body);
-static void ngx_http_read_discarded_request_body_handler(ngx_http_request_t *r);
 static ngx_int_t ngx_http_read_discarded_request_body(ngx_http_request_t *r);
 static ngx_int_t ngx_http_test_expect(ngx_http_request_t *r);
 
@@ -36,6 +36,8 @@ ngx_http_read_client_request_body(ngx_http_request_t *r,
     ngx_temp_file_t           *tf;
     ngx_http_request_body_t   *rb;
     ngx_http_core_loc_conf_t  *clcf;
+
+    r->main->count++;
 
     if (r->request_body || r->discard_body) {
         post_handler(r);
@@ -142,6 +144,7 @@ ngx_http_read_client_request_body(ngx_http_request_t *r,
 
             r->header_in->pos += (size_t) r->headers_in.content_length_n;
             r->request_length += r->headers_in.content_length_n;
+            b->last = r->header_in->pos;
 
             if (r->request_body_in_file_only) {
                 if (ngx_http_write_request_body(r, rb->bufs) != NGX_OK) {
@@ -300,7 +303,7 @@ ngx_http_do_read_client_request_body(ngx_http_request_t *r)
 
             if (n == 0) {
                 ngx_log_error(NGX_LOG_INFO, c->log, 0,
-                              "client closed prematurely connection");
+                              "client prematurely closed connection");
             }
 
             if (n == 0 || n == NGX_ERROR) {
@@ -370,9 +373,13 @@ ngx_http_do_read_client_request_body(ngx_http_request_t *r)
         }
     }
 
-    if (r->request_body_in_file_only && rb->bufs->next) {
+    if (rb->bufs->next
+        && (r->request_body_in_file_only || r->request_body_in_single_buf))
+    {
         rb->bufs = rb->bufs->next;
     }
+
+    r->read_event_handler = ngx_http_block_reading;
 
     rb->post_handler(r);
 
@@ -468,22 +475,26 @@ ngx_http_discard_request_body(ngx_http_request_t *r)
         }
     }
 
-    r->discard_body = 1;
-
-    r->read_event_handler = ngx_http_read_discarded_request_body_handler;
+    r->read_event_handler = ngx_http_discarded_request_body_handler;
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
         return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
-    (void) ngx_http_read_discarded_request_body(r);
+    if (ngx_http_read_discarded_request_body(r) == NGX_OK) {
+        r->lingering_close = 0;
+
+    } else {
+        r->count++;
+        r->discard_body = 1;
+    }
 
     return NGX_OK;
 }
 
 
-static void
-ngx_http_read_discarded_request_body_handler(ngx_http_request_t *r)
+void
+ngx_http_discarded_request_body_handler(ngx_http_request_t *r)
 {
     ngx_int_t                  rc;
     ngx_msec_t                 timer;
@@ -497,7 +508,7 @@ ngx_http_read_discarded_request_body_handler(ngx_http_request_t *r)
     if (rev->timedout) {
         c->timedout = 1;
         c->error = 1;
-        ngx_http_finalize_request(r, 0);
+        ngx_http_finalize_request(r, NGX_ERROR);
         return;
     }
 
@@ -506,7 +517,8 @@ ngx_http_read_discarded_request_body_handler(ngx_http_request_t *r)
 
         if (timer <= 0) {
             r->discard_body = 0;
-            ngx_http_finalize_request(r, 0);
+            r->lingering_close = 0;
+            ngx_http_finalize_request(r, NGX_ERROR);
             return;
         }
 
@@ -517,13 +529,9 @@ ngx_http_read_discarded_request_body_handler(ngx_http_request_t *r)
     rc = ngx_http_read_discarded_request_body(r);
 
     if (rc == NGX_OK) {
-
         r->discard_body = 0;
-
-        if (r->done) {
-            ngx_http_finalize_request(r, 0);
-        }
-
+        r->lingering_close = 0;
+        ngx_http_finalize_request(r, NGX_DONE);
         return;
     }
 
@@ -531,7 +539,7 @@ ngx_http_read_discarded_request_body_handler(ngx_http_request_t *r)
 
     if (ngx_handle_read_event(rev, 0) != NGX_OK) {
         c->error = 1;
-        ngx_http_finalize_request(r, rc);
+        ngx_http_finalize_request(r, NGX_ERROR);
         return;
     }
 

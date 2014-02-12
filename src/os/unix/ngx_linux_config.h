@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -58,6 +59,11 @@
 #include <ngx_auto_config.h>
 
 
+#if (NGX_HAVE_POSIX_SEM)
+#include <semaphore.h>
+#endif
+
+
 #if (NGX_HAVE_SYS_PRCTL_H)
 #include <sys/prctl.h>
 #endif
@@ -81,12 +87,14 @@ extern ssize_t sendfile(int s, int fd, int32_t *offset, size_t size);
 #endif
 
 
-#define NGX_LISTEN_BACKLOG        511
-
-
-#if defined TCP_DEFER_ACCEPT && !defined NGX_HAVE_DEFERRED_ACCEPT
-#define NGX_HAVE_DEFERRED_ACCEPT  1
+#if (NGX_HAVE_FILE_AIO)
+#include <sys/syscall.h>
+#include <linux/aio_abi.h>
+typedef struct iocb  ngx_aiocb_t;
 #endif
+
+
+#define NGX_LISTEN_BACKLOG        511
 
 
 #ifndef NGX_HAVE_SO_SNDLOWAT
@@ -101,6 +109,7 @@ extern ssize_t sendfile(int s, int fd, int32_t *offset, size_t size);
 
 
 #define NGX_HAVE_OS_SPECIFIC_INIT    1
+#define ngx_debug_init()
 
 
 extern char **environ;

@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -19,10 +20,12 @@ typedef struct {
     ngx_str_t                       name;
 
     ngx_int_t                       current_weight;
+    ngx_int_t                       effective_weight;
     ngx_int_t                       weight;
 
     ngx_uint_t                      fails;
     time_t                          accessed;
+    time_t                          checked;
 
     ngx_uint_t                      max_fails;
     time_t                          fail_timeout;
@@ -79,7 +82,6 @@ ngx_int_t
 void ngx_http_upstream_save_round_robin_peer_session(ngx_peer_connection_t *pc,
     void *data);
 #endif
-
 
 
 #endif /* _NGX_HTTP_UPSTREAM_ROUND_ROBIN_H_INCLUDED_ */

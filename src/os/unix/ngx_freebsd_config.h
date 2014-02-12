@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -22,6 +23,7 @@
 #include <grp.h>
 #include <dirent.h>
 #include <glob.h>
+#include <time.h>
 #include <sys/param.h>          /* ALIGN() */
 #include <sys/mount.h>          /* statfs() */
 
@@ -68,13 +70,13 @@
 #include <ngx_auto_config.h>
 
 
-#if (NGX_HAVE_POLL)
-#include <poll.h>
+#if (NGX_HAVE_POSIX_SEM)
+#include <semaphore.h>
 #endif
 
 
-#if (NGX_HAVE_AIO)
-#include <aio.h>
+#if (NGX_HAVE_POLL)
+#include <poll.h>
 #endif
 
 
@@ -83,12 +85,13 @@
 #endif
 
 
-#define NGX_LISTEN_BACKLOG        -1
-
-
-#if (defined SO_ACCEPTFILTER && !defined NGX_HAVE_DEFERRED_ACCEPT)
-#define NGX_HAVE_DEFERRED_ACCEPT  1
+#if (NGX_HAVE_FILE_AIO || NGX_HAVE_AIO)
+#include <aio.h>
+typedef struct aiocb  ngx_aiocb_t;
 #endif
+
+
+#define NGX_LISTEN_BACKLOG        -1
 
 
 #if (__FreeBSD_version < 430000 || __FreeBSD_version < 500012)
@@ -108,6 +111,7 @@ pid_t rfork_thread(int flags, void *stack, int (*func)(void *arg), void *arg);
 
 
 #define NGX_HAVE_OS_SPECIFIC_INIT    1
+#define NGX_HAVE_DEBUG_MALLOC        1
 
 
 extern char **environ;

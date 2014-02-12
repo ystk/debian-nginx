@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -467,11 +468,18 @@ header_out(r, key, value)
     }
 
     if (header->key.len == sizeof("Content-Length") - 1
-        && ngx_strncasecmp(header->key.data, "Content-Length",
+        && ngx_strncasecmp(header->key.data, (u_char *) "Content-Length",
                            sizeof("Content-Length") - 1) == 0)
     {
         r->headers_out.content_length_n = (off_t) SvIV(value);
         r->headers_out.content_length = header;
+    }
+
+    if (header->key.len == sizeof("Content-Encoding") - 1
+        && ngx_strncasecmp(header->key.data, "Content-Encoding",
+                           sizeof("Content-Encoding") - 1) == 0)
+    {
+        r->headers_out.content_encoding = header;
     }
 
 
@@ -642,17 +650,22 @@ sendfile(r, filename, offset = -1, bytes = 0)
         XSRETURN_EMPTY;
     }
 
-    (void) ngx_cpystrn(path.data, filename, path.len + 1);
+    (void) ngx_cpystrn(path.data, (u_char *) filename, path.len + 1);
 
     clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
 
     ngx_memzero(&of, sizeof(ngx_open_file_info_t));
 
+    of.read_ahead = clcf->read_ahead;
     of.directio = clcf->directio;
     of.valid = clcf->open_file_cache_valid;
     of.min_uses = clcf->open_file_cache_min_uses;
     of.errors = clcf->open_file_cache_errors;
     of.events = clcf->open_file_cache_events;
+
+    if (ngx_http_set_disable_symlinks(r, clcf, &path, &of) != NGX_OK) {
+        XSRETURN_EMPTY;
+    }
 
     if (ngx_open_cached_file(clcf->open_file_cache, &path, &of, r->pool)
         != NGX_OK)
@@ -835,7 +848,7 @@ variable(r, name, value = NULL)
     var.len = len;
     var.data = lowcase;
 
-    #if (NGX_LOG_DEBUG)
+    #if (NGX_DEBUG)
 
     if (value) {
         ngx_log_debug2(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
@@ -943,6 +956,7 @@ sleep(r, sleep, next)
     ngx_add_timer(r->connection->write, sleep);
 
     r->write_event_handler = ngx_http_perl_sleep_handler;
+    r->main->count++;
 
 
 void

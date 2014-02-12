@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -82,7 +83,7 @@ struct ngx_event_s {
 #endif
 
 #if (NGX_WIN32)
-    /* setsockopt(SO_UPDATE_ACCEPT_CONTEXT) was succesfull */
+    /* setsockopt(SO_UPDATE_ACCEPT_CONTEXT) was successful */
     unsigned         accept_context_updated:1;
 #endif
 
@@ -189,10 +190,35 @@ struct ngx_event_s {
 };
 
 
-typedef struct {
-    in_addr_t  mask;
-    in_addr_t  addr;
-} ngx_event_debug_t;
+#if (NGX_HAVE_FILE_AIO)
+
+struct ngx_event_aio_s {
+    void                      *data;
+    ngx_event_handler_pt       handler;
+    ngx_file_t                *file;
+
+    ngx_fd_t                   fd;
+
+#if (NGX_HAVE_EVENTFD)
+    int64_t                    res;
+#if (NGX_TEST_BUILD_EPOLL)
+    ngx_err_t                  err;
+    size_t                     nbytes;
+#endif
+#else
+    ngx_err_t                  err;
+    size_t                     nbytes;
+#endif
+
+#if (NGX_HAVE_AIO_SENDFILE)
+    off_t                      last_offset;
+#endif
+
+    ngx_aiocb_t                aiocb;
+    ngx_event_t                event;
+};
+
+#endif
 
 
 typedef struct {

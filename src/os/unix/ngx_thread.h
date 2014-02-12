@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -122,7 +123,6 @@ ngx_int_t ngx_cond_signal(ngx_cond_t *cv);
 #define ngx_thread_main()     1
 
 #endif
-
 
 
 #endif /* _NGX_THREAD_H_INCLUDED_ */

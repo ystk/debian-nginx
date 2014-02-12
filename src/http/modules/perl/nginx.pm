@@ -14,13 +14,16 @@ our @EXPORT = qw(
 
     HTTP_OK
     HTTP_CREATED
+    HTTP_ACCEPTED
     HTTP_NO_CONTENT
     HTTP_PARTIAL_CONTENT
 
     HTTP_MOVED_PERMANENTLY
     HTTP_MOVED_TEMPORARILY
     HTTP_REDIRECT
+    HTTP_SEE_OTHER
     HTTP_NOT_MODIFIED
+    HTTP_TEMPORARY_REDIRECT
 
     HTTP_BAD_REQUEST
     HTTP_UNAUTHORIZED
@@ -47,7 +50,7 @@ our @EXPORT = qw(
     HTTP_INSUFFICIENT_STORAGE
 );
 
-our $VERSION = '0.7.67';
+our $VERSION = '1.2.1';
 
 require XSLoader;
 XSLoader::load('nginx', $VERSION);
@@ -59,13 +62,16 @@ use constant DECLINED                       => -5;
 
 use constant HTTP_OK                        => 200;
 use constant HTTP_CREATED                   => 201;
+use constant HTTP_ACCEPTED                  => 202;
 use constant HTTP_NO_CONTENT                => 204;
 use constant HTTP_PARTIAL_CONTENT           => 206;
 
 use constant HTTP_MOVED_PERMANENTLY         => 301;
 use constant HTTP_MOVED_TEMPORARILY         => 302;
 use constant HTTP_REDIRECT                  => 302;
+use constant HTTP_SEE_OTHER                 => 303;
 use constant HTTP_NOT_MODIFIED              => 304;
+use constant HTTP_TEMPORARY_REDIRECT        => 307;
 
 use constant HTTP_BAD_REQUEST               => 400;
 use constant HTTP_UNAUTHORIZED              => 401;
@@ -126,6 +132,7 @@ Igor Sysoev
 =head1 COPYRIGHT AND LICENSE
 
 Copyright (C) Igor Sysoev
+Copyright (C) Nginx, Inc.
 
 
 =cut

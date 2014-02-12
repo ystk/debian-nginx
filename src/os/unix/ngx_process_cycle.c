@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -61,7 +62,7 @@ ngx_int_t              ngx_threads_n;
 #endif
 
 
-u_long         cpu_affinity;
+uint64_t       cpu_affinity;
 static u_char  master_process[] = "master process";
 
 
@@ -249,6 +250,10 @@ ngx_master_process_cycle(ngx_cycle_t *cycle)
             ngx_start_worker_processes(cycle, ccf->worker_processes,
                                        NGX_PROCESS_JUST_RESPAWN);
             ngx_start_cache_manager_processes(cycle, 1);
+
+            /* allow new processes to start */
+            ngx_msleep(100);
+
             live = 1;
             ngx_signal_worker_processes(cycle,
                                         ngx_signal_value(NGX_SHUTDOWN_SIGNAL));
@@ -290,6 +295,11 @@ void
 ngx_single_process_cycle(ngx_cycle_t *cycle)
 {
     ngx_uint_t  i;
+
+    if (ngx_set_environment(cycle, NULL) == NULL) {
+        /* fatal */
+        exit(2);
+    }
 
     for (i = 0; ngx_modules[i]; i++) {
         if (ngx_modules[i]->init_process) {
@@ -615,7 +625,8 @@ ngx_reap_children(ngx_cycle_t *cycle)
                     == NGX_INVALID_PID)
                 {
                     ngx_log_error(NGX_LOG_ALERT, cycle->log, 0,
-                                  "can not respawn %s", ngx_processes[i].name);
+                                  "could not respawn %s",
+                                  ngx_processes[i].name);
                     continue;
                 }
 
@@ -685,6 +696,8 @@ ngx_master_process_exit(ngx_cycle_t *cycle)
         }
     }
 
+    ngx_close_listening_sockets(cycle);
+
     /*
      * Copy ngx_cycle->log related data to the special static exit cycle,
      * log, and log file structures enough to allow a signal handler to log.
@@ -711,6 +724,8 @@ ngx_worker_process_cycle(ngx_cycle_t *cycle, void *data)
 {
     ngx_uint_t         i;
     ngx_connection_t  *c;
+
+    ngx_process = NGX_PROCESS_WORKER;
 
     ngx_worker_process_init(cycle, 1);
 
@@ -827,8 +842,6 @@ ngx_worker_process_init(ngx_cycle_t *cycle, ngx_uint_t priority)
     ngx_core_conf_t  *ccf;
     ngx_listening_t  *ls;
 
-    ngx_process = NGX_PROCESS_WORKER;
-
     if (ngx_set_environment(cycle, NULL) == NULL) {
         /* fatal */
         exit(2);
@@ -854,13 +867,13 @@ ngx_worker_process_init(ngx_cycle_t *cycle, ngx_uint_t priority)
         }
     }
 
-    if (ccf->rlimit_core != NGX_CONF_UNSET_SIZE) {
+    if (ccf->rlimit_core != NGX_CONF_UNSET) {
         rlmt.rlim_cur = (rlim_t) ccf->rlimit_core;
         rlmt.rlim_max = (rlim_t) ccf->rlimit_core;
 
         if (setrlimit(RLIMIT_CORE, &rlmt) == -1) {
             ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
-                          "setrlimit(RLIMIT_CORE, %i) failed",
+                          "setrlimit(RLIMIT_CORE, %O) failed",
                           ccf->rlimit_core);
         }
     }
@@ -900,19 +913,9 @@ ngx_worker_process_init(ngx_cycle_t *cycle, ngx_uint_t priority)
         }
     }
 
-#if (NGX_HAVE_SCHED_SETAFFINITY)
-
     if (cpu_affinity) {
-        ngx_log_error(NGX_LOG_NOTICE, cycle->log, 0,
-                      "sched_setaffinity(0x%08Xl)", cpu_affinity);
-
-        if (sched_setaffinity(0, 32, (cpu_set_t *) &cpu_affinity) == -1) {
-            ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
-                          "sched_setaffinity(0x%08Xl) failed", cpu_affinity);
-        }
+        ngx_setaffinity(cpu_affinity, cycle->log);
     }
-
-#endif
 
 #if (NGX_HAVE_PR_SET_DUMPABLE)
 
@@ -1026,13 +1029,14 @@ ngx_worker_process_exit(ngx_cycle_t *cycle)
                 && !c[i].read->resolver)
             {
                 ngx_log_error(NGX_LOG_ALERT, cycle->log, 0,
-                              "open socket #%d left in connection %ui%s",
-                              c[i].fd, i, ngx_debug_quit ? ", aborting" : "");
-                ngx_debug_point();
+                              "open socket #%d left in connection %ui",
+                              c[i].fd, i);
+                ngx_debug_quit = 1;
             }
         }
 
         if (ngx_debug_quit) {
+            ngx_log_error(NGX_LOG_ALERT, cycle->log, 0, "aborting");
             ngx_debug_point();
         }
     }
@@ -1285,6 +1289,8 @@ ngx_cache_manager_process_cycle(ngx_cycle_t *cycle, void *data)
     ngx_event_t   ev;
 
     cycle->connection_n = 512;
+
+    ngx_process = NGX_PROCESS_HELPER;
 
     ngx_worker_process_init(cycle, 0);
 

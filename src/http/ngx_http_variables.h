@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -59,21 +60,52 @@ ngx_int_t ngx_http_variable_unknown_header(ngx_http_variable_value_t *v,
 #define ngx_http_clear_variable(r, index) r->variables0[index].text.data = NULL;
 
 
-ngx_int_t ngx_http_variables_add_core_vars(ngx_conf_t *cf);
-ngx_int_t ngx_http_variables_init_vars(ngx_conf_t *cf);
+#if (NGX_PCRE)
+
+typedef struct {
+    ngx_uint_t                    capture;
+    ngx_int_t                     index;
+} ngx_http_regex_variable_t;
 
 
 typedef struct {
-    ngx_rbtree_node_t             node;
-    size_t                        len;
-    ngx_http_variable_value_t    *value;
-} ngx_http_variable_value_node_t;
+    ngx_regex_t                  *regex;
+    ngx_uint_t                    ncaptures;
+    ngx_http_regex_variable_t    *variables;
+    ngx_uint_t                    nvariables;
+    ngx_str_t                     name;
+} ngx_http_regex_t;
 
 
-void ngx_http_variable_value_rbtree_insert(ngx_rbtree_node_t *temp,
-    ngx_rbtree_node_t *node, ngx_rbtree_node_t *sentinel);
-ngx_http_variable_value_t *ngx_http_variable_value_lookup(ngx_rbtree_t *rbtree,
-    ngx_str_t *name, uint32_t hash);
+typedef struct {
+    ngx_http_regex_t             *regex;
+    void                         *value;
+} ngx_http_map_regex_t;
+
+
+ngx_http_regex_t *ngx_http_regex_compile(ngx_conf_t *cf,
+    ngx_regex_compile_t *rc);
+ngx_int_t ngx_http_regex_exec(ngx_http_request_t *r, ngx_http_regex_t *re,
+    ngx_str_t *s);
+
+#endif
+
+
+typedef struct {
+    ngx_hash_combined_t           hash;
+#if (NGX_PCRE)
+    ngx_http_map_regex_t         *regex;
+    ngx_uint_t                    nregex;
+#endif
+} ngx_http_map_t;
+
+
+void *ngx_http_map_find(ngx_http_request_t *r, ngx_http_map_t *map,
+    ngx_str_t *match);
+
+
+ngx_int_t ngx_http_variables_add_core_vars(ngx_conf_t *cf);
+ngx_int_t ngx_http_variables_init_vars(ngx_conf_t *cf);
 
 
 extern ngx_http_variable_value_t  ngx_http_variable_null_value;

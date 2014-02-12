@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -44,6 +45,7 @@
 #include <grp.h>
 #include <dirent.h>
 #include <glob.h>
+#include <time.h>
 #if (NGX_HAVE_SYS_PARAM_H)
 #include <sys/param.h>          /* statfs() */
 #endif
@@ -96,6 +98,11 @@
 #include <ngx_auto_config.h>
 
 
+#if (NGX_HAVE_POSIX_SEM)
+#include <semaphore.h>
+#endif
+
+
 #if (NGX_HAVE_POLL)
 #include <poll.h>
 #endif
@@ -112,7 +119,15 @@
 #endif
 
 
+#if (NGX_HAVE_FILE_AIO)
+#include <aio.h>
+typedef struct aiocb  ngx_aiocb_t;
+#endif
+
+
 #define NGX_LISTEN_BACKLOG  511
+
+#define ngx_debug_init()
 
 
 #if (__FreeBSD__) && (__FreeBSD_version < 400017)

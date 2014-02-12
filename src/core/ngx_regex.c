@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -8,11 +9,64 @@
 #include <ngx_core.h>
 
 
+typedef struct {
+    ngx_flag_t  pcre_jit;
+} ngx_regex_conf_t;
+
+
 static void * ngx_libc_cdecl ngx_regex_malloc(size_t size);
 static void ngx_libc_cdecl ngx_regex_free(void *p);
+#if (NGX_HAVE_PCRE_JIT)
+static void ngx_pcre_free_studies(void *data);
+#endif
+
+static ngx_int_t ngx_regex_module_init(ngx_cycle_t *cycle);
+
+static void *ngx_regex_create_conf(ngx_cycle_t *cycle);
+static char *ngx_regex_init_conf(ngx_cycle_t *cycle, void *conf);
+
+static char *ngx_regex_pcre_jit(ngx_conf_t *cf, void *post, void *data);
+static ngx_conf_post_t  ngx_regex_pcre_jit_post = { ngx_regex_pcre_jit };
+
+
+static ngx_command_t  ngx_regex_commands[] = {
+
+    { ngx_string("pcre_jit"),
+      NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_flag_slot,
+      0,
+      offsetof(ngx_regex_conf_t, pcre_jit),
+      &ngx_regex_pcre_jit_post },
+
+      ngx_null_command
+};
+
+
+static ngx_core_module_t  ngx_regex_module_ctx = {
+    ngx_string("regex"),
+    ngx_regex_create_conf,
+    ngx_regex_init_conf
+};
+
+
+ngx_module_t  ngx_regex_module = {
+    NGX_MODULE_V1,
+    &ngx_regex_module_ctx,                 /* module context */
+    ngx_regex_commands,                    /* module directives */
+    NGX_CORE_MODULE,                       /* module type */
+    NULL,                                  /* init master */
+    ngx_regex_module_init,                 /* init module */
+    NULL,                                  /* init process */
+    NULL,                                  /* init thread */
+    NULL,                                  /* exit thread */
+    NULL,                                  /* exit process */
+    NULL,                                  /* exit master */
+    NGX_MODULE_V1_PADDING
+};
 
 
 static ngx_pool_t  *ngx_pcre_pool;
+static ngx_list_t  *ngx_pcre_studies;
 
 
 void
@@ -23,94 +77,134 @@ ngx_regex_init(void)
 }
 
 
-ngx_regex_t *
-ngx_regex_compile(ngx_str_t *pattern, ngx_int_t options, ngx_pool_t *pool,
-    ngx_str_t *err)
+static ngx_inline void
+ngx_regex_malloc_init(ngx_pool_t *pool)
 {
-    int              erroff;
-    const char      *errstr;
-    ngx_regex_t     *re;
 #if (NGX_THREADS)
     ngx_core_tls_t  *tls;
-
-#if (NGX_SUPPRESS_WARN)
-    tls = NULL;
-#endif
 
     if (ngx_threaded) {
         tls = ngx_thread_get_tls(ngx_core_tls_key);
         tls->pool = pool;
-    } else {
-        ngx_pcre_pool = pool;
+        return;
     }
 
-#else
+#endif
 
     ngx_pcre_pool = pool;
+}
+
+
+static ngx_inline void
+ngx_regex_malloc_done(void)
+{
+#if (NGX_THREADS)
+    ngx_core_tls_t  *tls;
+
+    if (ngx_threaded) {
+        tls = ngx_thread_get_tls(ngx_core_tls_key);
+        tls->pool = NULL;
+        return;
+    }
 
 #endif
 
-    re = pcre_compile((const char *) pattern->data, (int) options,
+    ngx_pcre_pool = NULL;
+}
+
+
+ngx_int_t
+ngx_regex_compile(ngx_regex_compile_t *rc)
+{
+    int               n, erroff;
+    char             *p;
+    pcre             *re;
+    const char       *errstr;
+    ngx_regex_elt_t  *elt;
+
+    ngx_regex_malloc_init(rc->pool);
+
+    re = pcre_compile((const char *) rc->pattern.data, (int) rc->options,
                       &errstr, &erroff, NULL);
 
-    if (re == NULL) {
-       if ((size_t) erroff == pattern->len) {
-           ngx_snprintf(err->data, err->len - 1,
-                        "pcre_compile() failed: %s in \"%s\"%Z",
-                        errstr, pattern->data);
-        } else {
-           ngx_snprintf(err->data, err->len - 1,
-                        "pcre_compile() failed: %s in \"%s\" at \"%s\"%Z",
-                        errstr, pattern->data, pattern->data + erroff);
-        }
-    }
-
     /* ensure that there is no current pool */
+    ngx_regex_malloc_done();
 
-#if (NGX_THREADS)
-    if (ngx_threaded) {
-        tls->pool = NULL;
-    } else {
-        ngx_pcre_pool = NULL;
-    }
-#else
-    ngx_pcre_pool = NULL;
-#endif
+    if (re == NULL) {
+        if ((size_t) erroff == rc->pattern.len) {
+           rc->err.len = ngx_snprintf(rc->err.data, rc->err.len,
+                              "pcre_compile() failed: %s in \"%V\"",
+                               errstr, &rc->pattern)
+                      - rc->err.data;
 
-    return re;
-}
+        } else {
+           rc->err.len = ngx_snprintf(rc->err.data, rc->err.len,
+                              "pcre_compile() failed: %s in \"%V\" at \"%s\"",
+                               errstr, &rc->pattern, rc->pattern.data + erroff)
+                      - rc->err.data;
+        }
 
-
-ngx_int_t
-ngx_regex_capture_count(ngx_regex_t *re)
-{
-    int  rc, n;
-
-    n = 0;
-
-    rc = pcre_fullinfo(re, NULL, PCRE_INFO_CAPTURECOUNT, &n);
-
-    if (rc < 0) {
-        return (ngx_int_t) rc;
+        return NGX_ERROR;
     }
 
-    return (ngx_int_t) n;
-}
-
-
-ngx_int_t
-ngx_regex_exec(ngx_regex_t *re, ngx_str_t *s, int *captures, ngx_int_t size)
-{
-    int  rc;
-
-    rc = pcre_exec(re, NULL, (const char *) s->data, s->len, 0, 0,
-                   captures, size);
-
-    if (rc == -1) {
-        return NGX_REGEX_NO_MATCHED;
+    rc->regex = ngx_pcalloc(rc->pool, sizeof(ngx_regex_t));
+    if (rc->regex == NULL) {
+        return NGX_ERROR;
     }
 
-    return rc;
+    rc->regex->pcre = re;
+
+    /* do not study at runtime */
+
+    if (ngx_pcre_studies != NULL) {
+        elt = ngx_list_push(ngx_pcre_studies);
+        if (elt == NULL) {
+            return NGX_ERROR;
+        }
+
+        elt->regex = rc->regex;
+        elt->name = rc->pattern.data;
+    }
+
+    n = pcre_fullinfo(re, NULL, PCRE_INFO_CAPTURECOUNT, &rc->captures);
+    if (n < 0) {
+        p = "pcre_fullinfo(\"%V\", PCRE_INFO_CAPTURECOUNT) failed: %d";
+        goto failed;
+    }
+
+    if (rc->captures == 0) {
+        return NGX_OK;
+    }
+
+    n = pcre_fullinfo(re, NULL, PCRE_INFO_NAMECOUNT, &rc->named_captures);
+    if (n < 0) {
+        p = "pcre_fullinfo(\"%V\", PCRE_INFO_NAMECOUNT) failed: %d";
+        goto failed;
+    }
+
+    if (rc->named_captures == 0) {
+        return NGX_OK;
+    }
+
+    n = pcre_fullinfo(re, NULL, PCRE_INFO_NAMEENTRYSIZE, &rc->name_size);
+    if (n < 0) {
+        p = "pcre_fullinfo(\"%V\", PCRE_INFO_NAMEENTRYSIZE) failed: %d";
+        goto failed;
+    }
+
+    n = pcre_fullinfo(re, NULL, PCRE_INFO_NAMETABLE, &rc->names);
+    if (n < 0) {
+        p = "pcre_fullinfo(\"%V\", PCRE_INFO_NAMETABLE) failed: %d";
+        goto failed;
+    }
+
+    return NGX_OK;
+
+failed:
+
+    rc->err.len = ngx_snprintf(rc->err.data, rc->err.len, p, &rc->pattern, n)
+                  - rc->err.data;
+    return NGX_OK;
 }
 
 
@@ -133,7 +227,7 @@ ngx_regex_exec_array(ngx_array_t *a, ngx_str_t *s, ngx_log_t *log)
 
         if (n < 0) {
             ngx_log_error(NGX_LOG_ALERT, log, 0,
-                          ngx_regex_exec_n " failed: %d on \"%V\" using \"%s\"",
+                          ngx_regex_exec_n " failed: %i on \"%V\" using \"%s\"",
                           n, s, re[i].name);
             return NGX_ERROR;
         }
@@ -157,11 +251,15 @@ ngx_regex_malloc(size_t size)
     if (ngx_threaded) {
         tls = ngx_thread_get_tls(ngx_core_tls_key);
         pool = tls->pool;
+
     } else {
         pool = ngx_pcre_pool;
     }
+
 #else
+
     pool = ngx_pcre_pool;
+
 #endif
 
     if (pool) {
@@ -176,4 +274,191 @@ static void ngx_libc_cdecl
 ngx_regex_free(void *p)
 {
     return;
+}
+
+
+#if (NGX_HAVE_PCRE_JIT)
+
+static void
+ngx_pcre_free_studies(void *data)
+{
+    ngx_list_t *studies = data;
+
+    ngx_uint_t        i;
+    ngx_list_part_t  *part;
+    ngx_regex_elt_t  *elts;
+
+    part = &studies->part;
+    elts = part->elts;
+
+    for (i = 0 ; /* void */ ; i++) {
+
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            elts = part->elts;
+            i = 0;
+        }
+
+        if (elts[i].regex->extra != NULL) {
+            pcre_free_study(elts[i].regex->extra);
+        }
+    }
+}
+
+#endif
+
+
+static ngx_int_t
+ngx_regex_module_init(ngx_cycle_t *cycle)
+{
+    int               opt;
+    const char       *errstr;
+    ngx_uint_t        i;
+    ngx_list_part_t  *part;
+    ngx_regex_elt_t  *elts;
+
+    opt = 0;
+
+#if (NGX_HAVE_PCRE_JIT)
+    {
+    ngx_regex_conf_t    *rcf;
+    ngx_pool_cleanup_t  *cln;
+
+    rcf = (ngx_regex_conf_t *) ngx_get_conf(cycle->conf_ctx, ngx_regex_module);
+
+    if (rcf->pcre_jit) {
+        opt = PCRE_STUDY_JIT_COMPILE;
+
+        /*
+         * The PCRE JIT compiler uses mmap for its executable codes, so we
+         * have to explicitly call the pcre_free_study() function to free
+         * this memory.
+         */
+
+        cln = ngx_pool_cleanup_add(cycle->pool, 0);
+        if (cln == NULL) {
+            return NGX_ERROR;
+        }
+
+        cln->handler = ngx_pcre_free_studies;
+        cln->data = ngx_pcre_studies;
+    }
+    }
+#endif
+
+    ngx_regex_malloc_init(cycle->pool);
+
+    part = &ngx_pcre_studies->part;
+    elts = part->elts;
+
+    for (i = 0 ; /* void */ ; i++) {
+
+        if (i >= part->nelts) {
+            if (part->next == NULL) {
+                break;
+            }
+
+            part = part->next;
+            elts = part->elts;
+            i = 0;
+        }
+
+        elts[i].regex->extra = pcre_study(elts[i].regex->pcre, opt, &errstr);
+
+        if (errstr != NULL) {
+            ngx_log_error(NGX_LOG_ALERT, cycle->log, 0,
+                          "pcre_study() failed: %s in \"%s\"",
+                          errstr, elts[i].name);
+        }
+
+#if (NGX_HAVE_PCRE_JIT)
+        if (opt & PCRE_STUDY_JIT_COMPILE) {
+            int jit, n;
+
+            jit = 0;
+            n = pcre_fullinfo(elts[i].regex->pcre, elts[i].regex->extra,
+                              PCRE_INFO_JIT, &jit);
+
+            if (n != 0 || jit != 1) {
+                ngx_log_error(NGX_LOG_INFO, cycle->log, 0,
+                              "JIT compiler does not support pattern: \"%s\"",
+                              elts[i].name);
+            }
+        }
+#endif
+    }
+
+    ngx_regex_malloc_done();
+
+    ngx_pcre_studies = NULL;
+
+    return NGX_OK;
+}
+
+
+static void *
+ngx_regex_create_conf(ngx_cycle_t *cycle)
+{
+    ngx_regex_conf_t  *rcf;
+
+    rcf = ngx_pcalloc(cycle->pool, sizeof(ngx_regex_conf_t));
+    if (rcf == NULL) {
+        return NULL;
+    }
+
+    rcf->pcre_jit = NGX_CONF_UNSET;
+
+    ngx_pcre_studies = ngx_list_create(cycle->pool, 8, sizeof(ngx_regex_elt_t));
+    if (ngx_pcre_studies == NULL) {
+        return NULL;
+    }
+
+    return rcf;
+}
+
+
+static char *
+ngx_regex_init_conf(ngx_cycle_t *cycle, void *conf)
+{
+    ngx_regex_conf_t *rcf = conf;
+
+    ngx_conf_init_value(rcf->pcre_jit, 0);
+
+    return NGX_CONF_OK;
+}
+
+
+static char *
+ngx_regex_pcre_jit(ngx_conf_t *cf, void *post, void *data)
+{
+    ngx_flag_t  *fp = data;
+
+    if (*fp == 0) {
+        return NGX_CONF_OK;
+    }
+
+#if (NGX_HAVE_PCRE_JIT)
+    {
+    int  jit, r;
+
+    jit = 0;
+    r = pcre_config(PCRE_CONFIG_JIT, &jit);
+
+    if (r != 0 || jit != 1) {
+        ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
+                           "PCRE library does not support JIT");
+        *fp = 0;
+    }
+    }
+#else
+    ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
+                       "nginx was built without PCRE JIT support");
+    *fp = 0;
+#endif
+
+    return NGX_CONF_OK;
 }

@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -158,7 +159,7 @@ ngx_http_dav_handler(ngx_http_request_t *r)
 
         if (r->uri.data[r->uri.len - 1] == '/') {
             ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
-                          "can not PUT to a collection");
+                          "cannot PUT to a collection");
             return NGX_HTTP_CONFLICT;
         }
 
@@ -533,6 +534,13 @@ ngx_http_dav_copy_move_handler(ngx_http_request_t *r)
         ngx_log_error(NGX_LOG_ERR, r->connection->log, 0,
                       "client sent no \"Destination\" header");
         return NGX_HTTP_BAD_REQUEST;
+    }
+
+    p = dest->value.data;
+    /* there is always '\0' even after empty header value */
+    if (p[0] == '/') {
+        last = p + dest->value.len;
+        goto destination_done;
     }
 
     len = r->headers_in.server.len;
