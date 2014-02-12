@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -82,7 +83,7 @@ ngx_select_init(ngx_cycle_t *cycle, ngx_msec_t timer)
         nevents = 0;
     }
 
-    if (ngx_process == NGX_PROCESS_WORKER
+    if (ngx_process >= NGX_PROCESS_WORKER
         || cycle->old_cycle == NULL
         || cycle->old_cycle->connection_n < cycle->connection_n)
     {
@@ -266,11 +267,7 @@ ngx_select_process_events(ngx_cycle_t *cycle, ngx_msec_t timer,
         ready = 0;
     }
 
-    if (ready == -1) {
-        err = ngx_socket_errno;
-    } else {
-        err = 0;
-    }
+    err = (ready == -1) ? ngx_socket_errno : 0;
 
     if (flags & NGX_UPDATE_TIME) {
         ngx_time_update();

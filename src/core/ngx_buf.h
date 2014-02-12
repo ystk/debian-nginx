@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -67,9 +68,16 @@ typedef struct {
 } ngx_bufs_t;
 
 
+typedef struct ngx_output_chain_ctx_s  ngx_output_chain_ctx_t;
+
 typedef ngx_int_t (*ngx_output_chain_filter_pt)(void *ctx, ngx_chain_t *in);
 
-typedef struct {
+#if (NGX_HAVE_FILE_AIO)
+typedef void (*ngx_output_chain_aio_pt)(ngx_output_chain_ctx_t *ctx,
+    ngx_file_t *file);
+#endif
+
+struct ngx_output_chain_ctx_s {
     ngx_buf_t                   *buf;
     ngx_chain_t                 *in;
     ngx_chain_t                 *free;
@@ -82,6 +90,13 @@ typedef struct {
 #endif
     unsigned                     need_in_memory:1;
     unsigned                     need_in_temp:1;
+#if (NGX_HAVE_FILE_AIO)
+    unsigned                     aio:1;
+
+    ngx_output_chain_aio_pt      aio_handler;
+#endif
+
+    off_t                        alignment;
 
     ngx_pool_t                  *pool;
     ngx_int_t                    allocated;
@@ -90,7 +105,7 @@ typedef struct {
 
     ngx_output_chain_filter_pt   output_filter;
     void                        *filter_ctx;
-} ngx_output_chain_ctx_t;
+};
 
 
 typedef struct {
@@ -140,8 +155,8 @@ ngx_int_t ngx_chain_writer(void *ctx, ngx_chain_t *in);
 ngx_int_t ngx_chain_add_copy(ngx_pool_t *pool, ngx_chain_t **chain,
     ngx_chain_t *in);
 ngx_chain_t *ngx_chain_get_free_buf(ngx_pool_t *p, ngx_chain_t **free);
-void ngx_chain_update_chains(ngx_chain_t **free, ngx_chain_t **busy,
-    ngx_chain_t **out, ngx_buf_tag_t tag);
+void ngx_chain_update_chains(ngx_pool_t *p, ngx_chain_t **free,
+    ngx_chain_t **busy, ngx_chain_t **out, ngx_buf_tag_t tag);
 
 
 #endif /* _NGX_BUF_H_INCLUDED_ */

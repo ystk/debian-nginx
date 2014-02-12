@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -73,7 +74,6 @@ ngx_solaris_sendfilev_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
 
 
     send = 0;
-    complete = 0;
 
     vec.elts = sfvs;
     vec.size = sizeof(sendfilevec_t);
@@ -86,6 +86,7 @@ ngx_solaris_sendfilev_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
         fprev = 0;
         sfv = NULL;
         eintr = 0;
+        complete = 0;
         sent = 0;
         prev_send = send;
 
@@ -93,8 +94,8 @@ ngx_solaris_sendfilev_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
 
         /* create the sendfilevec and coalesce the neighbouring bufs */
 
-        for (cl = in; cl && vec.nelts < IOV_MAX && send < limit; cl = cl->next)
-        {
+        for (cl = in; cl && send < limit; cl = cl->next) {
+
             if (ngx_buf_special(cl->buf)) {
                 continue;
             }
@@ -112,6 +113,10 @@ ngx_solaris_sendfilev_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
                     sfv->sfv_len += (size_t) size;
 
                 } else {
+                    if (vec.nelts >= IOV_MAX) {
+                        break;
+                    }
+
                     sfv = ngx_array_push(&vec);
                     if (sfv == NULL) {
                         return NGX_CHAIN_ERROR;
@@ -146,6 +151,10 @@ ngx_solaris_sendfilev_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
                     sfv->sfv_len += (size_t) size;
 
                 } else {
+                    if (vec.nelts >= IOV_MAX) {
+                        break;
+                    }
+
                     sfv = ngx_array_push(&vec);
                     if (sfv == NULL) {
                         return NGX_CHAIN_ERROR;
@@ -168,19 +177,22 @@ ngx_solaris_sendfilev_chain(ngx_connection_t *c, ngx_chain_t *in, off_t limit)
         if (n == -1) {
             err = ngx_errno;
 
-            if (err == NGX_EAGAIN || err == NGX_EINTR) {
-                if (err == NGX_EINTR) {
-                    eintr = 1;
-                }
+            switch (err) {
+            case NGX_EAGAIN:
+                break;
 
-                ngx_log_debug1(NGX_LOG_DEBUG_EVENT, c->log, err,
-                              "sendfilev() sent only %uz bytes", sent);
+            case NGX_EINTR:
+                eintr = 1;
+                break;
 
-            } else {
+            default:
                 wev->error = 1;
                 ngx_connection_error(c, err, "sendfilev() failed");
                 return NGX_CHAIN_ERROR;
             }
+
+            ngx_log_debug1(NGX_LOG_DEBUG_EVENT, c->log, err,
+                          "sendfilev() sent only %uz bytes", sent);
         }
 
         ngx_log_debug2(NGX_LOG_DEBUG_EVENT, c->log, 0,

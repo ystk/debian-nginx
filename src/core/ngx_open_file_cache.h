@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -20,7 +21,9 @@ typedef struct {
     ngx_file_uniq_t          uniq;
     time_t                   mtime;
     off_t                    size;
+    off_t                    fs_size;
     off_t                    directio;
+    size_t                   read_ahead;
 
     ngx_err_t                err;
     char                    *failed;
@@ -28,6 +31,11 @@ typedef struct {
     time_t                   valid;
 
     ngx_uint_t               min_uses;
+
+#if (NGX_HAVE_OPENAT)
+    size_t                   disable_symlinks_from;
+    unsigned                 disable_symlinks:2;
+#endif
 
     unsigned                 test_dir:1;
     unsigned                 test_only:1;
@@ -60,6 +68,11 @@ struct ngx_cached_open_file_s {
     ngx_err_t                err;
 
     uint32_t                 uses;
+
+#if (NGX_HAVE_OPENAT)
+    size_t                   disable_symlinks_from;
+    unsigned                 disable_symlinks:2;
+#endif
 
     unsigned                 count:24;
     unsigned                 close:1;

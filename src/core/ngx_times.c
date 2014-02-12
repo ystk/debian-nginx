@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -27,11 +28,12 @@ volatile ngx_time_t     *ngx_cached_time;
 volatile ngx_str_t       ngx_cached_err_log_time;
 volatile ngx_str_t       ngx_cached_http_time;
 volatile ngx_str_t       ngx_cached_http_log_time;
+volatile ngx_str_t       ngx_cached_http_log_iso8601;
 
 #if !(NGX_WIN32)
 
 /*
- * locatime() and localtime_r() are not Async-Signal-Safe functions, therefore,
+ * localtime() and localtime_r() are not Async-Signal-Safe functions, therefore,
  * they must not be called by a signal handler, so we use the cached
  * GMT offset value. Fortunately the value is changed only two times a year.
  */
@@ -46,6 +48,8 @@ static u_char            cached_http_time[NGX_TIME_SLOTS]
                                     [sizeof("Mon, 28 Sep 1970 06:00:00 GMT")];
 static u_char            cached_http_log_time[NGX_TIME_SLOTS]
                                     [sizeof("28/Sep/1970:12:00:00 +0600")];
+static u_char            cached_http_log_iso8601[NGX_TIME_SLOTS]
+                                    [sizeof("1970-09-28T12:00:00+06:00")];
 
 
 static char  *week[] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
@@ -58,6 +62,7 @@ ngx_time_init(void)
     ngx_cached_err_log_time.len = sizeof("1970/09/28 12:00:00") - 1;
     ngx_cached_http_time.len = sizeof("Mon, 28 Sep 1970 06:00:00 GMT") - 1;
     ngx_cached_http_log_time.len = sizeof("28/Sep/1970:12:00:00 +0600") - 1;
+    ngx_cached_http_log_iso8601.len = sizeof("1970-09-28T12:00:00+06:00") - 1;
 
     ngx_cached_time = &cached_time[0];
 
@@ -68,7 +73,7 @@ ngx_time_init(void)
 void
 ngx_time_update(void)
 {
-    u_char          *p0, *p1, *p2;
+    u_char          *p0, *p1, *p2, *p3;
     ngx_tm_t         tm, gmt;
     time_t           sec;
     ngx_uint_t       msec;
@@ -152,6 +157,15 @@ ngx_time_update(void)
                        tp->gmtoff < 0 ? '-' : '+',
                        ngx_abs(tp->gmtoff / 60), ngx_abs(tp->gmtoff % 60));
 
+    p3 = &cached_http_log_iso8601[slot][0];
+
+    (void) ngx_sprintf(p3, "%4d-%02d-%02dT%02d:%02d:%02d%c%02d:%02d",
+                       tm.ngx_tm_year, tm.ngx_tm_mon,
+                       tm.ngx_tm_mday, tm.ngx_tm_hour,
+                       tm.ngx_tm_min, tm.ngx_tm_sec,
+                       tp->gmtoff < 0 ? '-' : '+',
+                       ngx_abs(tp->gmtoff / 60), ngx_abs(tp->gmtoff % 60));
+
 
     ngx_memory_barrier();
 
@@ -159,6 +173,7 @@ ngx_time_update(void)
     ngx_cached_http_time.data = p0;
     ngx_cached_err_log_time.data = p1;
     ngx_cached_http_log_time.data = p2;
+    ngx_cached_http_log_iso8601.data = p3;
 
     ngx_unlock(&ngx_time_lock);
 }
@@ -272,7 +287,7 @@ ngx_gmtime(time_t t, ngx_tm_t *tp)
 
     days = n / 86400;
 
-    /* Jaunary 1, 1970 was Thursday */
+    /* January 1, 1970 was Thursday */
 
     wday = (4 + days) % 7;
 
@@ -293,7 +308,7 @@ ngx_gmtime(time_t t, ngx_tm_t *tp)
     /*
      * The "days" should be adjusted to 1 only, however, some March 1st's go
      * to previous year, so we adjust them to 2.  This causes also shift of the
-     * last Feburary days to next year, but we catch the case when "yday"
+     * last February days to next year, but we catch the case when "yday"
      * becomes negative.
      */
 

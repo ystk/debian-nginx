@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -38,6 +39,7 @@ extern volatile ngx_time_t  *ngx_cached_time;
 extern volatile ngx_str_t    ngx_cached_err_log_time;
 extern volatile ngx_str_t    ngx_cached_http_time;
 extern volatile ngx_str_t    ngx_cached_http_log_time;
+extern volatile ngx_str_t    ngx_cached_http_log_iso8601;
 
 /*
  * milliseconds elapsed since epoch and truncated to ngx_msec_t,

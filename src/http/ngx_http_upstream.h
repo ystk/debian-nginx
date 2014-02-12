@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -43,6 +44,10 @@
 #define NGX_HTTP_UPSTREAM_IGN_XA_EXPIRES     0x00000004
 #define NGX_HTTP_UPSTREAM_IGN_EXPIRES        0x00000008
 #define NGX_HTTP_UPSTREAM_IGN_CACHE_CONTROL  0x00000010
+#define NGX_HTTP_UPSTREAM_IGN_SET_COOKIE     0x00000020
+#define NGX_HTTP_UPSTREAM_IGN_XA_LIMIT_RATE  0x00000040
+#define NGX_HTTP_UPSTREAM_IGN_XA_BUFFERING   0x00000080
+#define NGX_HTTP_UPSTREAM_IGN_XA_CHARSET     0x00000100
 
 
 typedef struct {
@@ -52,7 +57,7 @@ typedef struct {
     ngx_uint_t                       status;
     time_t                           response_sec;
     ngx_uint_t                       response_msec;
-    off_t                           response_length;
+    off_t                            response_length;
 
     ngx_str_t                       *peer;
 } ngx_http_upstream_state_t;
@@ -80,7 +85,7 @@ typedef struct {
 
 
 typedef struct {
-    ngx_peer_addr_t                 *addrs;
+    ngx_addr_t                      *addrs;
     ngx_uint_t                       naddrs;
     ngx_uint_t                       weight;
     ngx_uint_t                       max_fails;
@@ -152,6 +157,8 @@ typedef struct {
     ngx_array_t                     *hide_headers;
     ngx_array_t                     *pass_headers;
 
+    ngx_addr_t                      *local;
+
 #if (NGX_HTTP_CACHE)
     ngx_shm_zone_t                  *cache;
 
@@ -159,8 +166,12 @@ typedef struct {
     ngx_uint_t                       cache_use_stale;
     ngx_uint_t                       cache_methods;
 
+    ngx_flag_t                       cache_lock;
+    ngx_msec_t                       cache_lock_timeout;
+
     ngx_array_t                     *cache_valid;
-    ngx_array_t                     *no_cache; /* ngx_http_complex_value_t */
+    ngx_array_t                     *cache_bypass;
+    ngx_array_t                     *no_cache;
 #endif
 
     ngx_array_t                     *store_lengths;
@@ -175,6 +186,7 @@ typedef struct {
     ngx_flag_t                       ssl_session_reuse;
 #endif
 
+    ngx_str_t                        module;
 } ngx_http_upstream_conf_t;
 
 
@@ -212,6 +224,7 @@ typedef struct {
     ngx_table_elt_t                 *location;
     ngx_table_elt_t                 *accept_ranges;
     ngx_table_elt_t                 *www_authenticate;
+    ngx_table_elt_t                 *transfer_encoding;
 
 #if (NGX_HTTP_GZIP)
     ngx_table_elt_t                 *content_encoding;
@@ -220,6 +233,9 @@ typedef struct {
     off_t                            content_length_n;
 
     ngx_array_t                      cache_control;
+
+    unsigned                         connection_close:1;
+    unsigned                         chunked:1;
 } ngx_http_upstream_headers_in_t;
 
 
@@ -262,7 +278,7 @@ struct ngx_http_upstream_s {
     ngx_http_upstream_resolved_t    *resolved;
 
     ngx_buf_t                        buffer;
-    size_t                           length;
+    off_t                            length;
 
     ngx_chain_t                     *out_bufs;
     ngx_chain_t                     *busy_bufs;
@@ -283,6 +299,8 @@ struct ngx_http_upstream_s {
                                          ngx_int_t rc);
     ngx_int_t                      (*rewrite_redirect)(ngx_http_request_t *r,
                                          ngx_table_elt_t *h, size_t prefix);
+    ngx_int_t                      (*rewrite_cookie)(ngx_http_request_t *r,
+                                         ngx_table_elt_t *h);
 
     ngx_msec_t                       timeout;
 
@@ -303,6 +321,7 @@ struct ngx_http_upstream_s {
 #endif
 
     unsigned                         buffering:1;
+    unsigned                         keepalive:1;
 
     unsigned                         request_sent:1;
     unsigned                         header_sent:1;
@@ -315,6 +334,13 @@ typedef struct {
 } ngx_http_upstream_next_t;
 
 
+typedef struct {
+    ngx_str_t   key;
+    ngx_str_t   value;
+    ngx_uint_t  skip_empty;
+} ngx_http_upstream_param_t;
+
+
 ngx_int_t ngx_http_upstream_header_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 
@@ -322,6 +348,10 @@ ngx_int_t ngx_http_upstream_create(ngx_http_request_t *r);
 void ngx_http_upstream_init(ngx_http_request_t *r);
 ngx_http_upstream_srv_conf_t *ngx_http_upstream_add(ngx_conf_t *cf,
     ngx_url_t *u, ngx_uint_t flags);
+char *ngx_http_upstream_bind_set_slot(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
+char *ngx_http_upstream_param_set_slot(ngx_conf_t *cf, ngx_command_t *cmd,
+    void *conf);
 ngx_int_t ngx_http_upstream_hide_headers_hash(ngx_conf_t *cf,
     ngx_http_upstream_conf_t *conf, ngx_http_upstream_conf_t *prev,
     ngx_str_t *default_hide_headers, ngx_hash_init_t *hash);
@@ -333,7 +363,7 @@ ngx_int_t ngx_http_upstream_hide_headers_hash(ngx_conf_t *cf,
 
 extern ngx_module_t        ngx_http_upstream_module;
 extern ngx_conf_bitmask_t  ngx_http_upstream_cache_method_mask[];
-
+extern ngx_conf_bitmask_t  ngx_http_upstream_ignore_headers_masks[];
 
 
 #endif /* _NGX_HTTP_UPSTREAM_H_INCLUDED_ */

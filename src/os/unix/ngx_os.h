@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -31,7 +32,6 @@ typedef struct {
 } ngx_os_io_t;
 
 
-void ngx_debug_init(void);
 ngx_int_t ngx_os_init(ngx_log_t *log);
 void ngx_os_status(ngx_log_t *log);
 ngx_int_t ngx_os_specific_init(ngx_log_t *log);
@@ -46,6 +46,14 @@ ssize_t ngx_udp_unix_recv(ngx_connection_t *c, u_char *buf, size_t size);
 ssize_t ngx_unix_send(ngx_connection_t *c, u_char *buf, size_t size);
 ngx_chain_t *ngx_writev_chain(ngx_connection_t *c, ngx_chain_t *in,
     off_t limit);
+
+#if (NGX_HAVE_AIO)
+ssize_t ngx_aio_read(ngx_connection_t *c, u_char *buf, size_t size);
+ssize_t ngx_aio_read_chain(ngx_connection_t *c, ngx_chain_t *cl);
+ssize_t ngx_aio_write(ngx_connection_t *c, u_char *buf, size_t size);
+ngx_chain_t *ngx_aio_write_chain(ngx_connection_t *c, ngx_chain_t *in,
+    off_t limit);
+#endif
 
 
 extern ngx_os_io_t  ngx_os_io;

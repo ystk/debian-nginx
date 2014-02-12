@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -20,12 +21,24 @@ ngx_event_accept(ngx_event_t *ev)
     socklen_t          socklen;
     ngx_err_t          err;
     ngx_log_t         *log;
+    ngx_uint_t         level;
     ngx_socket_t       s;
     ngx_event_t       *rev, *wev;
     ngx_listening_t   *ls;
     ngx_connection_t  *c, *lc;
     ngx_event_conf_t  *ecf;
     u_char             sa[NGX_SOCKADDRLEN];
+#if (NGX_HAVE_ACCEPT4)
+    static ngx_uint_t  use_accept4 = 1;
+#endif
+
+    if (ev->timedout) {
+        if (ngx_enable_accept_events((ngx_cycle_t *) ngx_cycle) != NGX_OK) {
+            return;
+        }
+
+        ev->timedout = 0;
+    }
 
     ecf = ngx_event_get_conf(ngx_cycle->conf_ctx, ngx_event_core_module);
 
@@ -46,7 +59,16 @@ ngx_event_accept(ngx_event_t *ev)
     do {
         socklen = NGX_SOCKADDRLEN;
 
+#if (NGX_HAVE_ACCEPT4)
+        if (use_accept4) {
+            s = accept4(lc->fd, (struct sockaddr *) sa, &socklen,
+                        SOCK_NONBLOCK);
+        } else {
+            s = accept(lc->fd, (struct sockaddr *) sa, &socklen);
+        }
+#else
         s = accept(lc->fd, (struct sockaddr *) sa, &socklen);
+#endif
 
         if (s == -1) {
             err = ngx_socket_errno;
@@ -57,9 +79,27 @@ ngx_event_accept(ngx_event_t *ev)
                 return;
             }
 
-            ngx_log_error((ngx_uint_t) ((err == NGX_ECONNABORTED) ?
-                                             NGX_LOG_ERR : NGX_LOG_ALERT),
-                          ev->log, err, "accept() failed");
+            level = NGX_LOG_ALERT;
+
+            if (err == NGX_ECONNABORTED) {
+                level = NGX_LOG_ERR;
+
+            } else if (err == NGX_EMFILE || err == NGX_ENFILE) {
+                level = NGX_LOG_CRIT;
+            }
+
+#if (NGX_HAVE_ACCEPT4)
+            ngx_log_error(level, ev->log, err,
+                          use_accept4 ? "accept4() failed" : "accept() failed");
+
+            if (use_accept4 && err == NGX_ENOSYS) {
+                use_accept4 = 0;
+                ngx_inherited_nonblocking = 0;
+                continue;
+            }
+#else
+            ngx_log_error(level, ev->log, err, "accept() failed");
+#endif
 
             if (err == NGX_ECONNABORTED) {
                 if (ngx_event_flags & NGX_USE_KQUEUE_EVENT) {
@@ -68,6 +108,26 @@ ngx_event_accept(ngx_event_t *ev)
 
                 if (ev->available) {
                     continue;
+                }
+            }
+
+            if (err == NGX_EMFILE || err == NGX_ENFILE) {
+                if (ngx_disable_accept_events((ngx_cycle_t *) ngx_cycle)
+                    != NGX_OK)
+                {
+                    return;
+                }
+
+                if (ngx_use_accept_mutex) {
+                    if (ngx_accept_mutex_held) {
+                        ngx_shmtx_unlock(&ngx_accept_mutex);
+                        ngx_accept_mutex_held = 0;
+                    }
+
+                    ngx_accept_disabled = 1;
+
+                } else {
+                    ngx_add_timer(ev, ecf->accept_mutex_delay);
                 }
             }
 
@@ -152,9 +212,19 @@ ngx_event_accept(ngx_event_t *ev)
         c->socklen = socklen;
         c->listening = ls;
         c->local_sockaddr = ls->sockaddr;
-        c->local_socklen = ls->socklen;
 
         c->unexpected_eof = 1;
+
+#if (NGX_HAVE_UNIX_DOMAIN)
+        if (c->sockaddr->sa_family == AF_UNIX) {
+            c->tcp_nopush = NGX_TCP_NOPUSH_DISABLED;
+            c->tcp_nodelay = NGX_TCP_NODELAY_DISABLED;
+#if (NGX_SOLARIS)
+            /* Solaris's sendfilev() supports AF_NCA, AF_INET, and AF_INET6 */
+            c->sendfile = 0;
+#endif
+        }
+#endif
 
         rev = c->read;
         wev = c->write;
@@ -216,17 +286,56 @@ ngx_event_accept(ngx_event_t *ev)
 #if (NGX_DEBUG)
         {
 
-        in_addr_t            i;
-        ngx_event_debug_t   *dc;
-        struct sockaddr_in  *sin;
+        struct sockaddr_in   *sin;
+        ngx_cidr_t           *cidr;
+        ngx_uint_t            i;
+#if (NGX_HAVE_INET6)
+        struct sockaddr_in6  *sin6;
+        ngx_uint_t            n;
+#endif
 
-        sin = (struct sockaddr_in *) sa;
-        dc = ecf->debug_connection.elts;
+        cidr = ecf->debug_connection.elts;
         for (i = 0; i < ecf->debug_connection.nelts; i++) {
-            if ((sin->sin_addr.s_addr & dc[i].mask) == dc[i].addr) {
-                log->log_level = NGX_LOG_DEBUG_CONNECTION|NGX_LOG_DEBUG_ALL;
+            if (cidr[i].family != c->sockaddr->sa_family) {
+                goto next;
+            }
+
+            switch (cidr[i].family) {
+
+#if (NGX_HAVE_INET6)
+            case AF_INET6:
+                sin6 = (struct sockaddr_in6 *) c->sockaddr;
+                for (n = 0; n < 16; n++) {
+                    if ((sin6->sin6_addr.s6_addr[n]
+                        & cidr[i].u.in6.mask.s6_addr[n])
+                        != cidr[i].u.in6.addr.s6_addr[n])
+                    {
+                        goto next;
+                    }
+                }
+                break;
+#endif
+
+#if (NGX_HAVE_UNIX_DOMAIN)
+            case AF_UNIX:
+                break;
+#endif
+
+            default: /* AF_INET */
+                sin = (struct sockaddr_in *) c->sockaddr;
+                if ((sin->sin_addr.s_addr & cidr[i].u.in.mask)
+                    != cidr[i].u.in.addr)
+                {
+                    goto next;
+                }
                 break;
             }
+
+            log->log_level = NGX_LOG_DEBUG_CONNECTION|NGX_LOG_DEBUG_ALL;
+            break;
+
+        next:
+            continue;
         }
 
         }
@@ -307,6 +416,10 @@ ngx_enable_accept_events(ngx_cycle_t *cycle)
     for (i = 0; i < cycle->listening.nelts; i++) {
 
         c = ls[i].connection;
+
+        if (c->read->active) {
+            continue;
+        }
 
         if (ngx_event_flags & NGX_USE_RTSIG_EVENT) {
 

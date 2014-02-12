@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -81,9 +82,11 @@ typedef struct {
 
 
 
-#define NGX_SSL_SSLv2    2
-#define NGX_SSL_SSLv3    4
-#define NGX_SSL_TLSv1    8
+#define NGX_SSL_SSLv2    0x0002
+#define NGX_SSL_SSLv3    0x0004
+#define NGX_SSL_TLSv1    0x0008
+#define NGX_SSL_TLSv1_1  0x0010
+#define NGX_SSL_TLSv1_2  0x0020
 
 
 #define NGX_SSL_BUFFER   1
@@ -99,10 +102,12 @@ ngx_int_t ngx_ssl_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl,
 ngx_int_t ngx_ssl_client_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl,
     ngx_str_t *cert, ngx_int_t depth);
 ngx_int_t ngx_ssl_crl(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *crl);
-ngx_int_t ngx_ssl_generate_rsa512_key(ngx_ssl_t *ssl);
+RSA *ngx_ssl_rsa512_key_callback(SSL *ssl, int is_export, int key_length);
 ngx_int_t ngx_ssl_dhparam(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *file);
+ngx_int_t ngx_ssl_ecdh_curve(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *name);
 ngx_int_t ngx_ssl_session_cache(ngx_ssl_t *ssl, ngx_str_t *sess_ctx,
     ssize_t builtin_session_cache, ngx_shm_zone_t *shm_zone, time_t timeout);
+ngx_int_t ngx_ssl_session_cache_init(ngx_shm_zone_t *shm_zone, void *data);
 ngx_int_t ngx_ssl_create_connection(ngx_ssl_t *ssl, ngx_connection_t *c,
     ngx_uint_t flags);
 

@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -22,9 +23,14 @@ struct ngx_file_s {
 
     ngx_log_t                 *log;
 
+#if (NGX_HAVE_FILE_AIO)
+    ngx_event_aio_t           *aio;
+#endif
+
     unsigned                   valid_info:1;
     unsigned                   directio:1;
 };
+
 
 #define NGX_MAX_PATH_LEVEL  3
 
@@ -99,6 +105,7 @@ typedef ngx_int_t (*ngx_tree_handler_pt) (ngx_tree_ctx_t *ctx, ngx_str_t *name);
 
 struct ngx_tree_ctx_s {
     off_t                      size;
+    off_t                      fs_size;
     ngx_uint_t                 access;
     time_t                     mtime;
 

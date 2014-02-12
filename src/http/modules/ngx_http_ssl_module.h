@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -32,6 +33,7 @@ typedef struct {
     ngx_str_t                       certificate;
     ngx_str_t                       certificate_key;
     ngx_str_t                       dhparam;
+    ngx_str_t                       ecdh_curve;
     ngx_str_t                       client_certificate;
     ngx_str_t                       crl;
 

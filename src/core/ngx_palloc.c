@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -17,7 +18,7 @@ ngx_create_pool(size_t size, ngx_log_t *log)
 {
     ngx_pool_t  *p;
 
-    p = ngx_alloc(size, log);
+    p = ngx_memalign(NGX_POOL_ALIGNMENT, size, log);
     if (p == NULL) {
         return NULL;
     }
@@ -68,7 +69,7 @@ ngx_destroy_pool(ngx_pool_t *pool)
 
     /*
      * we could allocate the pool->log from this pool
-     * so we can not use this log while the free()ing the pool
+     * so we cannot use this log while free()ing the pool
      */
 
     for (p = pool, n = pool->d.next; /* void */; p = n, n = n->d.next) {
@@ -181,7 +182,7 @@ ngx_palloc_block(ngx_pool_t *pool, size_t size)
 
     psize = (size_t) (pool->d.end - (u_char *) pool);
 
-    m = ngx_alloc(psize, pool->log);
+    m = ngx_memalign(NGX_POOL_ALIGNMENT, psize, pool->log);
     if (m == NULL) {
         return NULL;
     }

@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -110,7 +111,7 @@ static ngx_command_t  ngx_core_commands[] = {
 
     { ngx_string("worker_rlimit_core"),
       NGX_MAIN_CONF|NGX_DIRECT_CONF|NGX_CONF_TAKE1,
-      ngx_conf_set_size_slot,
+      ngx_conf_set_off_slot,
       0,
       offsetof(ngx_core_conf_t, rlimit_core),
       NULL },
@@ -203,60 +204,66 @@ main(int argc, char *const *argv)
     ngx_cycle_t      *cycle, init_cycle;
     ngx_core_conf_t  *ccf;
 
+    ngx_debug_init();
+
+    if (ngx_strerror_init() != NGX_OK) {
+        return 1;
+    }
+
     if (ngx_get_options(argc, argv) != NGX_OK) {
         return 1;
     }
 
     if (ngx_show_version) {
-        ngx_log_stderr(0, "nginx version: " NGINX_VER);
+        ngx_write_stderr("nginx version: " NGINX_VER NGX_LINEFEED);
 
         if (ngx_show_help) {
-            ngx_log_stderr(0,
-                "Usage: nginx [-?hvVt] [-s signal] [-c filename] "
-                             "[-p prefix] [-g directives]" CRLF CRLF
-                "Options:" CRLF
-                "  -?,-h         : this help" CRLF
-                "  -v            : show version and exit" CRLF
+            ngx_write_stderr(
+                "Usage: nginx [-?hvVtq] [-s signal] [-c filename] "
+                             "[-p prefix] [-g directives]" NGX_LINEFEED
+                             NGX_LINEFEED
+                "Options:" NGX_LINEFEED
+                "  -?,-h         : this help" NGX_LINEFEED
+                "  -v            : show version and exit" NGX_LINEFEED
                 "  -V            : show version and configure options then exit"
-                                   CRLF
-                "  -t            : test configuration and exit" CRLF
+                                   NGX_LINEFEED
+                "  -t            : test configuration and exit" NGX_LINEFEED
+                "  -q            : suppress non-error messages "
+                                   "during configuration testing" NGX_LINEFEED
                 "  -s signal     : send signal to a master process: "
-                                   "stop, quit, reopen, reload" CRLF
+                                   "stop, quit, reopen, reload" NGX_LINEFEED
 #ifdef NGX_PREFIX
                 "  -p prefix     : set prefix path (default: "
-                                   NGX_PREFIX ")" CRLF
+                                   NGX_PREFIX ")" NGX_LINEFEED
 #else
-                "  -p prefix     : set prefix path (default: NONE)" CRLF
+                "  -p prefix     : set prefix path (default: NONE)" NGX_LINEFEED
 #endif
                 "  -c filename   : set configuration file (default: "
-                                   NGX_CONF_PATH ")" CRLF
+                                   NGX_CONF_PATH ")" NGX_LINEFEED
                 "  -g directives : set global directives out of configuration "
-                                   "file" CRLF
+                                   "file" NGX_LINEFEED NGX_LINEFEED
                 );
         }
 
         if (ngx_show_configure) {
+            ngx_write_stderr(
 #ifdef NGX_COMPILER
-            ngx_log_stderr(0, "built by " NGX_COMPILER);
+                "built by " NGX_COMPILER NGX_LINEFEED
 #endif
 #if (NGX_SSL)
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
-            ngx_log_stderr(0, "TLS SNI support enabled");
+                "TLS SNI support enabled" NGX_LINEFEED
 #else
-            ngx_log_stderr(0, "TLS SNI support disabled");
+                "TLS SNI support disabled" NGX_LINEFEED
 #endif
 #endif
-            ngx_log_stderr(0, "configure arguments:" NGX_CONFIGURE);
+                "configure arguments:" NGX_CONFIGURE NGX_LINEFEED);
         }
 
         if (!ngx_test_config) {
             return 0;
         }
     }
-
-#if (NGX_FREEBSD)
-    ngx_debug_init();
-#endif
 
     /* TODO */ ngx_max_sockets = -1;
 
@@ -332,8 +339,11 @@ main(int argc, char *const *argv)
     }
 
     if (ngx_test_config) {
-        ngx_log_stderr(0, "configuration file %s test is successful",
-                       cycle->conf_file.data);
+        if (!ngx_quiet_mode) {
+            ngx_log_stderr(0, "configuration file %s test is successful",
+                           cycle->conf_file.data);
+        }
+
         return 0;
     }
 
@@ -362,6 +372,10 @@ main(int argc, char *const *argv)
             return 1;
         }
 
+        ngx_daemonized = 1;
+    }
+
+    if (ngx_inherited) {
         ngx_daemonized = 1;
     }
 
@@ -635,7 +649,7 @@ ngx_exec_new_binary(ngx_cycle_t *cycle, char *const *argv)
         if (ngx_rename_file(ccf->oldpid.data, ccf->pid.data) != NGX_OK) {
             ngx_log_error(NGX_LOG_ALERT, cycle->log, ngx_errno,
                           ngx_rename_file_n " %s back to %s failed after "
-                          "the try to execute the new binary process \"%s\"",
+                          "an attempt to execute new binary process \"%s\"",
                           ccf->oldpid.data, ccf->pid.data, argv[0]);
         }
     }
@@ -683,6 +697,10 @@ ngx_get_options(int argc, char *const *argv)
 
             case 't':
                 ngx_test_config = 1;
+                break;
+
+            case 'q':
+                ngx_quiet_mode = 1;
                 break;
 
             case 'p':
@@ -859,14 +877,11 @@ ngx_process_options(ngx_cycle_t *cycle)
 #else
 
 #ifdef NGX_CONF_PREFIX
-        cycle->conf_prefix.len = sizeof(NGX_CONF_PREFIX) - 1;
-        cycle->conf_prefix.data = (u_char *) NGX_CONF_PREFIX;
+        ngx_str_set(&cycle->conf_prefix, NGX_CONF_PREFIX);
 #else
-        cycle->conf_prefix.len = sizeof(NGX_PREFIX) - 1;
-        cycle->conf_prefix.data = (u_char *) NGX_PREFIX;
+        ngx_str_set(&cycle->conf_prefix, NGX_PREFIX);
 #endif
-        cycle->prefix.len = sizeof(NGX_PREFIX) - 1;
-        cycle->prefix.data = (u_char *) NGX_PREFIX;
+        ngx_str_set(&cycle->prefix, NGX_PREFIX);
 
 #endif
     }
@@ -876,8 +891,7 @@ ngx_process_options(ngx_cycle_t *cycle)
         cycle->conf_file.data = ngx_conf_file;
 
     } else {
-        cycle->conf_file.len = sizeof(NGX_CONF_PATH) - 1;
-        cycle->conf_file.data = (u_char *) NGX_CONF_PATH;
+        ngx_str_set(&cycle->conf_file, NGX_CONF_PATH);
     }
 
     if (ngx_conf_full_name(cycle, &cycle->conf_file, 0) != NGX_OK) {
@@ -919,7 +933,7 @@ ngx_core_module_create_conf(ngx_cycle_t *cycle)
     }
 
     /*
-     * set by pcalloc()
+     * set by ngx_pcalloc()
      *
      *     ccf->pid = NULL;
      *     ccf->oldpid = NULL;
@@ -936,7 +950,7 @@ ngx_core_module_create_conf(ngx_cycle_t *cycle)
     ccf->debug_points = NGX_CONF_UNSET;
 
     ccf->rlimit_nofile = NGX_CONF_UNSET;
-    ccf->rlimit_core = NGX_CONF_UNSET_SIZE;
+    ccf->rlimit_core = NGX_CONF_UNSET;
     ccf->rlimit_sigpending = NGX_CONF_UNSET;
 
     ccf->user = (ngx_uid_t) NGX_CONF_UNSET_UINT;
@@ -969,15 +983,15 @@ ngx_core_module_init_conf(ngx_cycle_t *cycle, void *conf)
     ngx_conf_init_value(ccf->worker_processes, 1);
     ngx_conf_init_value(ccf->debug_points, 0);
 
-#if (NGX_HAVE_SCHED_SETAFFINITY)
+#if (NGX_HAVE_CPU_AFFINITY)
 
     if (ccf->cpu_affinity_n
         && ccf->cpu_affinity_n != 1
         && ccf->cpu_affinity_n != (ngx_uint_t) ccf->worker_processes)
     {
         ngx_log_error(NGX_LOG_WARN, cycle->log, 0,
-                      "number of the \"worker_processes\" is not equal to "
-                      "the number of the \"worker_cpu_affinity\" mask, "
+                      "the number of \"worker_processes\" is not equal to "
+                      "the number of \"worker_cpu_affinity\" masks, "
                       "using last mask for remaining worker processes");
     }
 
@@ -993,8 +1007,7 @@ ngx_core_module_init_conf(ngx_cycle_t *cycle, void *conf)
 
 
     if (ccf->pid.len == 0) {
-        ccf->pid.len = sizeof(NGX_PID_PATH) - 1;
-        ccf->pid.data = (u_char *) NGX_PID_PATH;
+        ngx_str_set(&ccf->pid, NGX_PID_PATH);
     }
 
     if (ngx_conf_full_name(cycle, &ccf->pid, 0) != NGX_OK) {
@@ -1042,8 +1055,7 @@ ngx_core_module_init_conf(ngx_cycle_t *cycle, void *conf)
 
 
     if (ccf->lock_file.len == 0) {
-        ccf->lock_file.len = sizeof(NGX_LOCK_PATH) - 1;
-        ccf->lock_file.data = (u_char *) NGX_LOCK_PATH;
+        ngx_str_set(&ccf->lock_file, NGX_LOCK_PATH);
     }
 
     if (ngx_conf_full_name(cycle, &ccf->lock_file, 0) != NGX_OK) {
@@ -1230,11 +1242,11 @@ ngx_set_priority(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 static char *
 ngx_set_cpu_affinity(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 {
-#if (NGX_HAVE_SCHED_SETAFFINITY)
+#if (NGX_HAVE_CPU_AFFINITY)
     ngx_core_conf_t  *ccf = conf;
 
     u_char            ch;
-    u_long           *mask;
+    uint64_t         *mask;
     ngx_str_t        *value;
     ngx_uint_t        i, n;
 
@@ -1242,7 +1254,7 @@ ngx_set_cpu_affinity(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return "is duplicate";
     }
 
-    mask = ngx_palloc(cf->pool, (cf->args->nelts - 1) * sizeof(long));
+    mask = ngx_palloc(cf->pool, (cf->args->nelts - 1) * sizeof(uint64_t));
     if (mask == NULL) {
         return NGX_CONF_ERROR;
     }
@@ -1254,9 +1266,9 @@ ngx_set_cpu_affinity(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     for (n = 1; n < cf->args->nelts; n++) {
 
-        if (value[n].len > 32) {
+        if (value[n].len > 64) {
             ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                         "\"worker_cpu_affinity\" supports up to 32 CPU only");
+                         "\"worker_cpu_affinity\" supports up to 64 CPUs only");
             return NGX_CONF_ERROR;
         }
 
@@ -1299,7 +1311,7 @@ ngx_set_cpu_affinity(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 }
 
 
-u_long
+uint64_t
 ngx_get_cpu_affinity(ngx_uint_t n)
 {
     ngx_core_conf_t  *ccf;

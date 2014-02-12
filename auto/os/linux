@@ -1,5 +1,6 @@
 
 # Copyright (C) Igor Sysoev
+# Copyright (C) Nginx, Inc.
 
 
 have=NGX_LINUX . auto/have_headers
@@ -18,7 +19,9 @@ CC_AUX_FLAGS="$cc_aux_flags -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64"
 # Linux kernel version
 
 version=$((`uname -r \
-       | sed 's/^\([0-9]*\)\.\([0-9]*\)\.\([0-9]*\).*/\1*256*256+\2*256+\3/'`))
+    | sed -n -e 's/^\([0-9][0-9]*\)\.\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/ \
+                                                 \1*256*256+\2*256+\3/p' \
+             -e 's/^\([0-9][0-9]*\)\.\([0-9][0-9]*\).*/\1*256*256+\2*256/p'`))
 
 version=${version:-0}
 
@@ -35,6 +38,12 @@ then
 fi
 
 
+# posix_fadvise64() had been implemented in 2.5.60
+
+if [ $version -lt 132412 ]; then
+    have=NGX_HAVE_POSIX_FADVISE . auto/nohave
+fi
+
 # epoll, EPOLLET version
 
 ngx_feature="epoll"
@@ -43,7 +52,7 @@ ngx_feature_run=yes
 ngx_feature_incs="#include <sys/epoll.h>"
 ngx_feature_path=
 ngx_feature_libs=
-ngx_feature_test="int efd = 0, fd = 1, n;
+ngx_feature_test="int efd = 0;
                   struct epoll_event ee;
                   ee.events = EPOLLIN|EPOLLOUT|EPOLLET;
                   ee.data.ptr = NULL;
@@ -119,8 +128,9 @@ ngx_feature_run=no
 ngx_feature_incs="#include <sched.h>"
 ngx_feature_path=
 ngx_feature_libs=
-ngx_feature_test="long mask = 0;
-                  sched_setaffinity(0, 32, (cpu_set_t *) &mask)"
+ngx_feature_test="cpu_set_t mask;
+                  CPU_ZERO(&mask);
+                  sched_setaffinity(0, sizeof(cpu_set_t), &mask)"
 . auto/feature
 
 
@@ -133,7 +143,7 @@ ngx_feature_incs="#include <crypt.h>"
 ngx_feature_path=
 ngx_feature_libs=-lcrypt
 ngx_feature_test="struct crypt_data  cd;
-                  crypt_r(NULL, NULL, &cd);"
+                  crypt_r(\"key\", \"salt\", &cd);"
 . auto/feature
 
 

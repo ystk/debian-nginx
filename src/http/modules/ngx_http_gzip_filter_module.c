@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -258,6 +259,18 @@ ngx_http_gzip_header_filter(ngx_http_request_t *r)
 
     r->gzip_vary = 1;
 
+#if (NGX_HTTP_DEGRADATION)
+    {
+    ngx_http_core_loc_conf_t  *clcf;
+
+    clcf = ngx_http_get_module_loc_conf(r, ngx_http_core_module);
+
+    if (clcf->gzip_disable_degradation && ngx_http_degraded(r)) {
+        return ngx_http_next_header_filter(r);
+    }
+    }
+#endif
+
     if (!r->gzip_tested) {
         if (ngx_http_gzip_ok(r) != NGX_OK) {
             return ngx_http_next_header_filter(r);
@@ -285,11 +298,8 @@ ngx_http_gzip_header_filter(ngx_http_request_t *r)
     }
 
     h->hash = 1;
-    h->key.len = sizeof("Content-Encoding") - 1;
-    h->key.data = (u_char *) "Content-Encoding";
-    h->value.len = sizeof("gzip") - 1;
-    h->value.data = (u_char *) "gzip";
-
+    ngx_str_set(&h->key, "Content-Encoding");
+    ngx_str_set(&h->value, "gzip");
     r->headers_out.content_encoding = h;
 
     r->main_filter_need_in_memory = 1;
@@ -369,7 +379,7 @@ ngx_http_gzip_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
         cl = NULL;
 
-        ngx_chain_update_chains(&ctx->free, &ctx->busy, &cl,
+        ngx_chain_update_chains(r->pool, &ctx->free, &ctx->busy, &cl,
                                 (ngx_buf_tag_t) &ngx_http_gzip_filter_module);
         ctx->nomem = 0;
     }
@@ -439,7 +449,7 @@ ngx_http_gzip_body_filter(ngx_http_request_t *r, ngx_chain_t *in)
 
         ngx_http_gzip_filter_free_copy_buf(r, ctx);
 
-        ngx_chain_update_chains(&ctx->free, &ctx->busy, &ctx->out,
+        ngx_chain_update_chains(r->pool, &ctx->free, &ctx->busy, &ctx->out,
                                 (ngx_buf_tag_t) &ngx_http_gzip_filter_module);
         ctx->last_out = &ctx->out;
 
@@ -749,6 +759,7 @@ static ngx_int_t
 ngx_http_gzip_filter_deflate(ngx_http_request_t *r, ngx_http_gzip_ctx_t *ctx)
 {
     int                    rc;
+    ngx_buf_t             *b;
     ngx_chain_t           *cl;
     ngx_http_gzip_conf_t  *conf;
 
@@ -760,7 +771,7 @@ ngx_http_gzip_filter_deflate(ngx_http_request_t *r, ngx_http_gzip_ctx_t *ctx)
 
     rc = deflate(&ctx->zstream, ctx->flush);
 
-    if (rc != Z_OK && rc != Z_STREAM_END) {
+    if (rc != Z_OK && rc != Z_STREAM_END && rc != Z_BUF_ERROR) {
         ngx_log_error(NGX_LOG_ALERT, r->connection->log, 0,
                       "deflate() failed: %d, %d", ctx->flush, rc);
         return NGX_ERROR;
@@ -809,8 +820,6 @@ ngx_http_gzip_filter_deflate(ngx_http_request_t *r, ngx_http_gzip_ctx_t *ctx)
 
     if (ctx->flush == Z_SYNC_FLUSH) {
 
-        ctx->zstream.avail_out = 0;
-        ctx->out_buf->flush = 1;
         ctx->flush = Z_NO_FLUSH;
 
         cl = ngx_alloc_chain_link(r->pool);
@@ -818,7 +827,22 @@ ngx_http_gzip_filter_deflate(ngx_http_request_t *r, ngx_http_gzip_ctx_t *ctx)
             return NGX_ERROR;
         }
 
-        cl->buf = ctx->out_buf;
+        b = ctx->out_buf;
+
+        if (ngx_buf_size(b) == 0) {
+
+            b = ngx_calloc_buf(ctx->request->pool);
+            if (b == NULL) {
+                return NGX_ERROR;
+            }
+
+        } else {
+            ctx->zstream.avail_out = 0;
+        }
+
+        b->flush = 1;
+
+        cl->buf = b;
         cl->next = NULL;
         *ctx->last_out = cl;
         ctx->last_out = &cl->next;
@@ -1123,8 +1147,8 @@ ngx_http_gzip_merge_conf(ngx_conf_t *cf, void *parent, void *child)
                               MAX_MEM_LEVEL - 1);
     ngx_conf_merge_value(conf->min_length, prev->min_length, 20);
 
-    if (ngx_http_merge_types(cf, conf->types_keys, &conf->types,
-                             prev->types_keys, &prev->types,
+    if (ngx_http_merge_types(cf, &conf->types_keys, &conf->types,
+                             &prev->types_keys, &prev->types,
                              ngx_http_html_default_types)
         != NGX_OK)
     {

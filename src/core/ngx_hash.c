@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -245,7 +246,7 @@ ngx_hash_find_combined(ngx_hash_combined_t *hash, ngx_uint_t key, u_char *name,
 
 
 #define NGX_HASH_ELT_SIZE(name)                                               \
-    (sizeof(void *) + ngx_align((name)->key.len + 1, sizeof(void *)))
+    (sizeof(void *) + ngx_align((name)->key.len + 2, sizeof(void *)))
 
 ngx_int_t
 ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
@@ -257,14 +258,6 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
     ngx_hash_elt_t  *elt, **buckets;
 
     for (n = 0; n < nelts; n++) {
-        if (names[n].key.len >= 255) {
-            ngx_log_error(NGX_LOG_EMERG, hinit->pool->log, 0,
-                          "the \"%V\" value to hash is to long: %uz bytes, "
-                          "the maximum length can be 255 bytes only",
-                          &names[n].key, names[n].key.len);
-            return NGX_ERROR;
-        }
-
         if (hinit->bucket_size < NGX_HASH_ELT_SIZE(&names[n]) + sizeof(void *))
         {
             ngx_log_error(NGX_LOG_EMERG, hinit->pool->log, 0,
@@ -285,7 +278,7 @@ ngx_hash_init(ngx_hash_init_t *hinit, ngx_hash_key_t *names, ngx_uint_t nelts)
     start = nelts / (bucket_size / (2 * sizeof(void *)));
     start = start ? start : 1;
 
-    if (hinit->max_size > 10000 && hinit->max_size / nelts < 100) {
+    if (hinit->max_size > 10000 && nelts && hinit->max_size / nelts < 100) {
         start = hinit->max_size - 1000;
     }
 
@@ -406,7 +399,7 @@ found:
         elt = (ngx_hash_elt_t *) ((u_char *) buckets[key] + test[key]);
 
         elt->value = names[n].value;
-        elt->len = (u_char) names[n].key.len;
+        elt->len = (u_short) names[n].key.len;
 
         ngx_strlow(elt->name, names[n].key.data, names[n].key.len);
 

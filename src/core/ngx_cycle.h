@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -44,6 +45,8 @@ struct ngx_cycle_s {
     ngx_connection_t         *free_connections;
     ngx_uint_t                free_connection_n;
 
+    ngx_queue_t               reusable_connections_queue;
+
     ngx_array_t               listening;
     ngx_array_t               pathes;
     ngx_list_t                open_files;
@@ -78,12 +81,12 @@ typedef struct {
 
      ngx_int_t                rlimit_nofile;
      ngx_int_t                rlimit_sigpending;
-     size_t                   rlimit_core;
+     off_t                    rlimit_core;
 
      int                      priority;
 
      ngx_uint_t               cpu_affinity_n;
-     u_long                  *cpu_affinity;
+     uint64_t                *cpu_affinity;
 
      char                    *username;
      ngx_uid_t                user;
@@ -121,7 +124,7 @@ ngx_int_t ngx_signal_process(ngx_cycle_t *cycle, char *sig);
 void ngx_reopen_files(ngx_cycle_t *cycle, ngx_uid_t user);
 char **ngx_set_environment(ngx_cycle_t *cycle, ngx_uint_t *last);
 ngx_pid_t ngx_exec_new_binary(ngx_cycle_t *cycle, char *const *argv);
-u_long ngx_get_cpu_affinity(ngx_uint_t n);
+uint64_t ngx_get_cpu_affinity(ngx_uint_t n);
 ngx_shm_zone_t *ngx_shared_memory_add(ngx_conf_t *cf, ngx_str_t *name,
     size_t size, void *tag);
 
@@ -130,6 +133,7 @@ extern volatile ngx_cycle_t  *ngx_cycle;
 extern ngx_array_t            ngx_old_cycles;
 extern ngx_module_t           ngx_core_module;
 extern ngx_uint_t             ngx_test_config;
+extern ngx_uint_t             ngx_quiet_mode;
 #if (NGX_THREADS)
 extern ngx_tls_key_t          ngx_core_tls_key;
 #endif

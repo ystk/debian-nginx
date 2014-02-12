@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -12,7 +13,7 @@
 
 
 typedef struct {
-    ngx_peer_addr_t                *peer;
+    ngx_addr_t                     *peer;
 
     ngx_msec_t                      timeout;
 
@@ -457,7 +458,7 @@ ngx_mail_auth_http_process_headers(ngx_mail_session_t *s,
     time_t               timer;
     size_t               len, size;
     ngx_int_t            rc, port, n;
-    ngx_peer_addr_t     *peer;
+    ngx_addr_t          *peer;
     struct sockaddr_in  *sin;
 
     ngx_log_debug0(NGX_LOG_DEBUG_MAIL, s->connection->log, 0,
@@ -764,7 +765,7 @@ ngx_mail_auth_http_process_headers(ngx_mail_session_t *s,
                 return;
             }
 
-            peer = ngx_pcalloc(s->connection->pool, sizeof(ngx_peer_addr_t));
+            peer = ngx_pcalloc(s->connection->pool, sizeof(ngx_addr_t));
             if (peer == NULL) {
                 ngx_destroy_pool(ctx->pool);
                 ngx_mail_session_internal_server_error(s);
@@ -783,7 +784,7 @@ ngx_mail_auth_http_process_headers(ngx_mail_session_t *s,
             sin->sin_family = AF_INET;
 
             port = ngx_atoi(ctx->port.data, ctx->port.len);
-            if (port == NGX_ERROR || port < 1 || port > 65536) {
+            if (port == NGX_ERROR || port < 1 || port > 65535) {
                 ngx_log_error(NGX_LOG_ERR, s->connection->log, 0,
                               "auth http server %V sent invalid server "
                               "port:\"%V\"",
@@ -795,8 +796,7 @@ ngx_mail_auth_http_process_headers(ngx_mail_session_t *s,
 
             sin->sin_port = htons((in_port_t) port);
 
-            ctx->addr.data[ctx->addr.len] = '\0';
-            sin->sin_addr.s_addr = inet_addr((char *) ctx->addr.data);
+            sin->sin_addr.s_addr = ngx_inet_addr(ctx->addr.data, ctx->addr.len);
             if (sin->sin_addr.s_addr == INADDR_NONE) {
                 ngx_log_error(NGX_LOG_ERR, s->connection->log, 0,
                               "auth http server %V sent invalid server "
@@ -1406,12 +1406,17 @@ ngx_mail_auth_http(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     ahcf->peer = u.addrs;
 
-    ahcf->host_header = u.host;
+    if (u.family != AF_UNIX) {
+        ahcf->host_header = u.host;
+
+    } else {
+        ngx_str_set(&ahcf->host_header, "localhost");
+    }
+
     ahcf->uri = u.uri;
 
     if (ahcf->uri.len == 0) {
-        ahcf->uri.len = sizeof("/") - 1;
-        ahcf->uri.data = (u_char *) "/";
+        ngx_str_set(&ahcf->uri, "/");
     }
 
     return NGX_CONF_OK;

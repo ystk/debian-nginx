@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -27,6 +28,11 @@ struct ngx_listening_s {
     int                 backlog;
     int                 rcvbuf;
     int                 sndbuf;
+#if (NGX_HAVE_KEEPALIVE_TUNABLE)
+    int                 keepidle;
+    int                 keepintvl;
+    int                 keepcnt;
+#endif
 
     /* handler of accepted connection */
     ngx_connection_handler_pt   handler;
@@ -60,6 +66,7 @@ struct ngx_listening_s {
 #if (NGX_HAVE_INET6 && defined IPV6_V6ONLY)
     unsigned            ipv6only:2;
 #endif
+    unsigned            keepalive:2;
 
 #if (NGX_HAVE_DEFERRED_ACCEPT)
     unsigned            deferred_accept:1;
@@ -68,6 +75,9 @@ struct ngx_listening_s {
 #ifdef SO_ACCEPTFILTER
     char               *accept_filter;
 #endif
+#endif
+#if (NGX_HAVE_SETFIB)
+    int                 setfib;
 #endif
 
 };
@@ -129,9 +139,10 @@ struct ngx_connection_s {
 #endif
 
     struct sockaddr    *local_sockaddr;
-    socklen_t           local_socklen;
 
     ngx_buf_t          *buffer;
+
+    ngx_queue_t         queue;
 
     ngx_atomic_uint_t   number;
 
@@ -148,6 +159,7 @@ struct ngx_connection_s {
     unsigned            destroyed:1;
 
     unsigned            idle:1;
+    unsigned            reusable:1;
     unsigned            close:1;
 
     unsigned            sendfile:1;
@@ -157,6 +169,11 @@ struct ngx_connection_s {
 
 #if (NGX_HAVE_IOCP)
     unsigned            accept_context_updated:1;
+#endif
+
+#if (NGX_HAVE_AIO_SENDFILE)
+    unsigned            aio_sendfile:1;
+    ngx_buf_t          *busy_sendfile;
 #endif
 
 #if (NGX_THREADS)
@@ -179,5 +196,6 @@ ngx_int_t ngx_connection_error(ngx_connection_t *c, ngx_err_t err, char *text);
 ngx_connection_t *ngx_get_connection(ngx_socket_t s, ngx_log_t *log);
 void ngx_free_connection(ngx_connection_t *c);
 
+void ngx_reusable_connection(ngx_connection_t *c, ngx_uint_t reusable);
 
 #endif /* _NGX_CONNECTION_H_INCLUDED_ */

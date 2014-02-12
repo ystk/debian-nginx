@@ -1,5 +1,6 @@
 /
 / Copyright (C) Igor Sysoev
+/ Copyright (C) Nginx, Inc.
 /
 
 / ngx_atomic_uint_t ngx_atomic_cmp_set(ngx_atomic_t *lock,
@@ -31,7 +32,12 @@
 
 
 / ngx_cpu_pause()
+/
+/ the "rep; nop" is used instead of "pause" to avoid the "[ PAUSE ]" hardware
+/ capability added by linker because Solaris/amd64 does not know about it:
+/
+/ ld.so.1: nginx: fatal: hardware capability unsupported: 0x2000 [ PAUSE ]
 
        .inline ngx_cpu_pause,0
-       pause
+       rep; nop
        .end

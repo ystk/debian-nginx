@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -9,7 +10,8 @@
 #include <ngx_mail.h>
 
 
-#define NGX_DEFAULT_CIPHERS  "HIGH:!ADH:!MD5"
+#define NGX_DEFAULT_CIPHERS     "HIGH:!aNULL:!MD5"
+#define NGX_DEFAULT_ECDH_CURVE  "prime256v1"
 
 
 static void *ngx_mail_ssl_create_conf(ngx_conf_t *cf);
@@ -36,6 +38,8 @@ static ngx_conf_bitmask_t  ngx_mail_ssl_protocols[] = {
     { ngx_string("SSLv2"), NGX_SSL_SSLv2 },
     { ngx_string("SSLv3"), NGX_SSL_SSLv3 },
     { ngx_string("TLSv1"), NGX_SSL_TLSv1 },
+    { ngx_string("TLSv1.1"), NGX_SSL_TLSv1_1 },
+    { ngx_string("TLSv1.2"), NGX_SSL_TLSv1_2 },
     { ngx_null_string, 0 }
 };
 
@@ -75,6 +79,13 @@ static ngx_command_t  ngx_mail_ssl_commands[] = {
       ngx_conf_set_str_slot,
       NGX_MAIL_SRV_CONF_OFFSET,
       offsetof(ngx_mail_ssl_conf_t, dhparam),
+      NULL },
+
+    { ngx_string("ssl_ecdh_curve"),
+      NGX_MAIL_MAIN_CONF|NGX_MAIL_SRV_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_str_slot,
+      NGX_MAIL_SRV_CONF_OFFSET,
+      offsetof(ngx_mail_ssl_conf_t, ecdh_curve),
       NULL },
 
     { ngx_string("ssl_protocols"),
@@ -163,8 +174,8 @@ ngx_mail_ssl_create_conf(ngx_conf_t *cf)
      *     scf->certificate = { 0, NULL };
      *     scf->certificate_key = { 0, NULL };
      *     scf->dhparam = { 0, NULL };
-     *     scf->ciphers.len = 0;
-     *     scf->ciphers.data = NULL;
+     *     scf->ecdh_curve = { 0, NULL };
+     *     scf->ciphers = { 0, NULL };
      *     scf->shm_zone = NULL;
      */
 
@@ -198,12 +209,16 @@ ngx_mail_ssl_merge_conf(ngx_conf_t *cf, void *parent, void *child)
                          prev->prefer_server_ciphers, 0);
 
     ngx_conf_merge_bitmask_value(conf->protocols, prev->protocols,
-                         (NGX_CONF_BITMASK_SET|NGX_SSL_SSLv3|NGX_SSL_TLSv1));
+                         (NGX_CONF_BITMASK_SET|NGX_SSL_SSLv3|NGX_SSL_TLSv1
+                          |NGX_SSL_TLSv1_1|NGX_SSL_TLSv1_2));
 
     ngx_conf_merge_str_value(conf->certificate, prev->certificate, "");
     ngx_conf_merge_str_value(conf->certificate_key, prev->certificate_key, "");
 
     ngx_conf_merge_str_value(conf->dhparam, prev->dhparam, "");
+
+    ngx_conf_merge_str_value(conf->ecdh_curve, prev->ecdh_curve,
+                         NGX_DEFAULT_ECDH_CURVE);
 
     ngx_conf_merge_str_value(conf->ciphers, prev->ciphers, NGX_DEFAULT_CIPHERS);
 
@@ -287,9 +302,7 @@ ngx_mail_ssl_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         SSL_CTX_set_options(conf->ssl.ctx, SSL_OP_CIPHER_SERVER_PREFERENCE);
     }
 
-    if (ngx_ssl_generate_rsa512_key(&conf->ssl) != NGX_OK) {
-        return NGX_CONF_ERROR;
-    }
+    SSL_CTX_set_tmp_rsa_callback(conf->ssl.ctx, ngx_ssl_rsa512_key_callback);
 
     if (ngx_ssl_dhparam(cf, &conf->ssl, &conf->dhparam) != NGX_OK) {
         return NGX_CONF_ERROR;
@@ -454,6 +467,8 @@ ngx_mail_ssl_session_cache(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             if (scf->shm_zone == NULL) {
                 return NGX_CONF_ERROR;
             }
+
+            scf->shm_zone->init = ngx_ssl_session_cache_init;
 
             continue;
         }

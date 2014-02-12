@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -28,9 +29,10 @@ typedef int               ngx_err_t;
 #define NGX_ENOTDIR       ENOTDIR
 #define NGX_EISDIR        EISDIR
 #define NGX_EINVAL        EINVAL
+#define NGX_ENFILE        ENFILE
+#define NGX_EMFILE        EMFILE
 #define NGX_ENOSPC        ENOSPC
 #define NGX_EPIPE         EPIPE
-#define NGX_EAGAIN        EAGAIN
 #define NGX_EINPROGRESS   EINPROGRESS
 #define NGX_EADDRINUSE    EADDRINUSE
 #define NGX_ECONNABORTED  ECONNABORTED
@@ -48,6 +50,16 @@ typedef int               ngx_err_t;
 #define NGX_EILSEQ        EILSEQ
 #define NGX_ENOMOREFILES  0
 
+#if (NGX_HAVE_OPENAT)
+#define NGX_EMLINK        EMLINK
+#define NGX_ELOOP         ELOOP
+#endif
+
+#if (__hpux__)
+#define NGX_EAGAIN        EWOULDBLOCK
+#else
+#define NGX_EAGAIN        EAGAIN
+#endif
 
 
 #define ngx_errno                  errno
@@ -56,30 +68,8 @@ typedef int               ngx_err_t;
 #define ngx_set_socket_errno(err)  errno = err
 
 
-#if (NGX_HAVE_STRERROR_R || NGX_HAVE_GNU_STRERROR_R)
-
-u_char *ngx_strerror_r(int err, u_char *errstr, size_t size);
-
-#else
-
-/* Solaris and Tru64 UNIX have thread-safe strerror() */
-
-#define ngx_strerror_r(err, errstr, size)                                    \
-    ngx_cpystrn(errstr, (u_char *) strerror(err), size)
-
-#endif
-
-
-#if (NGX_HAVE_SYS_ERRLIST)
-
-#define ngx_sigsafe_strerror(err)                                            \
-    (err > 0 && err < sys_nerr) ? sys_errlist[err] : "Unknown error"
-
-#else
-
-#define ngx_sigsafe_strerror(err)  ""
-
-#endif
+u_char *ngx_strerror(ngx_err_t err, u_char *errstr, size_t size);
+ngx_uint_t ngx_strerror_init(void);
 
 
 #endif /* _NGX_ERRNO_H_INCLUDED_ */

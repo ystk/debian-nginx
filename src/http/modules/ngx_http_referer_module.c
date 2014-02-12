@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -29,6 +30,9 @@ typedef struct {
     ngx_flag_t               blocked_referer;
 
     ngx_hash_keys_arrays_t  *keys;
+
+    ngx_uint_t               referer_hash_max_size;
+    ngx_uint_t               referer_hash_bucket_size;
 } ngx_http_referer_conf_t;
 
 
@@ -52,6 +56,20 @@ static ngx_command_t  ngx_http_referer_commands[] = {
       ngx_http_valid_referers,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
+      NULL },
+
+    { ngx_string("referer_hash_max_size"),
+      NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_num_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_referer_conf_t, referer_hash_max_size),
+      NULL },
+
+    { ngx_string("referer_hash_bucket_size"),
+      NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_TAKE1,
+      ngx_conf_set_num_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_referer_conf_t, referer_hash_bucket_size),
       NULL },
 
       ngx_null_command
@@ -239,6 +257,8 @@ ngx_http_referer_create_conf(ngx_conf_t *cf)
 
     conf->no_referer = NGX_CONF_UNSET;
     conf->blocked_referer = NGX_CONF_UNSET;
+    conf->referer_hash_max_size = NGX_CONF_UNSET_UINT;
+    conf->referer_hash_bucket_size = NGX_CONF_UNSET_UINT;
 
     return conf;
 }
@@ -260,6 +280,10 @@ ngx_http_referer_merge_conf(ngx_conf_t *cf, void *parent, void *child)
 #endif
         ngx_conf_merge_value(conf->no_referer, prev->no_referer, 0);
         ngx_conf_merge_value(conf->blocked_referer, prev->blocked_referer, 0);
+        ngx_conf_merge_uint_value(conf->referer_hash_max_size,
+                                  prev->referer_hash_max_size, 2048);
+        ngx_conf_merge_uint_value(conf->referer_hash_bucket_size,
+                                  prev->referer_hash_bucket_size, 64);
 
         return NGX_CONF_OK;
     }
@@ -276,10 +300,17 @@ ngx_http_referer_merge_conf(ngx_conf_t *cf, void *parent, void *child)
         return NGX_CONF_ERROR;
     }
 
+    ngx_conf_merge_uint_value(conf->referer_hash_max_size,
+                              prev->referer_hash_max_size, 2048);
+    ngx_conf_merge_uint_value(conf->referer_hash_bucket_size,
+                              prev->referer_hash_bucket_size, 64);
+    conf->referer_hash_bucket_size = ngx_align(conf->referer_hash_bucket_size,
+                                               ngx_cacheline_size);
+
     hash.key = ngx_hash_key_lc;
-    hash.max_size = 2048; /* TODO: referer_hash_max_size; */
-    hash.bucket_size = 64; /* TODO: referer_hash_bucket_size; */
-    hash.name = "referers_hash";
+    hash.max_size = conf->referer_hash_max_size;
+    hash.bucket_size = conf->referer_hash_bucket_size;
+    hash.name = "referer_hash";
     hash.pool = cf->pool;
 
     if (conf->keys->keys.nelts) {
@@ -363,8 +394,7 @@ ngx_http_valid_referers(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_http_server_name_t    *sn;
     ngx_http_core_srv_conf_t  *cscf;
 
-    name.len = sizeof("invalid_referer") - 1;
-    name.data = (u_char *) "invalid_referer";
+    ngx_str_set(&name, "invalid_referer");
 
     var = ngx_http_add_variable(cf, &name,
                                 NGX_HTTP_VAR_CHANGEABLE|NGX_HTTP_VAR_NOHASH);
@@ -407,8 +437,7 @@ ngx_http_valid_referers(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
             continue;
         }
 
-        uri.len = 0;
-        uri.data = NULL;
+        ngx_str_null(&uri);
 
         if (ngx_strcmp(value[i].data, "server_names") == 0) {
 
@@ -421,7 +450,7 @@ ngx_http_valid_referers(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
                 if (sn[n].regex) {
 
                     if (ngx_http_add_regex_referer(cf, rlcf, &sn[n].name,
-                                                   sn[n].regex)
+                                                   sn[n].regex->regex)
                         != NGX_OK)
                     {
                         return NGX_CONF_ERROR;
@@ -511,9 +540,9 @@ ngx_http_add_regex_referer(ngx_conf_t *cf, ngx_http_referer_conf_t *rlcf,
     ngx_str_t *name, ngx_regex_t *regex)
 {
 #if (NGX_PCRE)
-    ngx_str_t         err;
-    ngx_regex_elt_t  *re;
-    u_char            errstr[NGX_MAX_CONF_ERRSTR];
+    ngx_regex_elt_t      *re;
+    ngx_regex_compile_t   rc;
+    u_char                errstr[NGX_MAX_CONF_ERRSTR];
 
     if (name->len == 1) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "empty regex in \"%V\"", name);
@@ -539,19 +568,23 @@ ngx_http_add_regex_referer(ngx_conf_t *cf, ngx_http_referer_conf_t *rlcf,
         return NGX_CONF_OK;
     }
 
-    err.len = NGX_MAX_CONF_ERRSTR;
-    err.data = errstr;
-
     name->len--;
     name->data++;
 
-    re->regex = ngx_regex_compile(name, NGX_REGEX_CASELESS, cf->pool, &err);
+    ngx_memzero(&rc, sizeof(ngx_regex_compile_t));
 
-    if (re->regex == NULL) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "%s", err.data);
+    rc.pattern = *name;
+    rc.pool = cf->pool;
+    rc.options = NGX_REGEX_CASELESS;
+    rc.err.len = NGX_MAX_CONF_ERRSTR;
+    rc.err.data = errstr;
+
+    if (ngx_regex_compile(&rc) != NGX_OK) {
+        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "%V", &rc.err);
         return NGX_CONF_ERROR;
     }
 
+    re->regex = rc.regex;
     re->name = name->data;
 
     return NGX_CONF_OK;

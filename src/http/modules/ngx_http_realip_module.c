@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -15,27 +16,25 @@
 
 
 typedef struct {
-    in_addr_t          mask;
-    in_addr_t          addr;
-} ngx_http_realip_from_t;
-
-
-typedef struct {
-    ngx_array_t       *from;     /* array of ngx_http_realip_from_t */
+    ngx_array_t       *from;     /* array of ngx_cidr_t */
     ngx_uint_t         type;
     ngx_uint_t         hash;
     ngx_str_t          header;
+    ngx_flag_t         recursive;
 } ngx_http_realip_loc_conf_t;
 
 
 typedef struct {
     ngx_connection_t  *connection;
-    in_addr_t          addr;
+    struct sockaddr   *sockaddr;
+    socklen_t          socklen;
     ngx_str_t          addr_text;
 } ngx_http_realip_ctx_t;
 
 
 static ngx_int_t ngx_http_realip_handler(ngx_http_request_t *r);
+static ngx_int_t ngx_http_realip_set_addr(ngx_http_request_t *r,
+    ngx_addr_t *addr);
 static void ngx_http_realip_cleanup(void *data);
 static char *ngx_http_realip_from(ngx_conf_t *cf, ngx_command_t *cmd,
     void *conf);
@@ -60,6 +59,13 @@ static ngx_command_t  ngx_http_realip_commands[] = {
       ngx_http_realip,
       NGX_HTTP_LOC_CONF_OFFSET,
       0,
+      NULL },
+
+    { ngx_string("real_ip_recursive"),
+      NGX_HTTP_MAIN_CONF|NGX_HTTP_SRV_CONF|NGX_HTTP_LOC_CONF|NGX_CONF_FLAG,
+      ngx_conf_set_flag_slot,
+      NGX_HTTP_LOC_CONF_OFFSET,
+      offsetof(ngx_http_realip_loc_conf_t, recursive),
       NULL },
 
       ngx_null_command
@@ -103,26 +109,18 @@ ngx_http_realip_handler(ngx_http_request_t *r)
 {
     u_char                      *ip, *p;
     size_t                       len;
-    in_addr_t                    addr;
     ngx_uint_t                   i, hash;
+    ngx_addr_t                   addr;
     ngx_list_part_t             *part;
     ngx_table_elt_t             *header;
-    struct sockaddr_in          *sin;
     ngx_connection_t            *c;
-    ngx_pool_cleanup_t          *cln;
     ngx_http_realip_ctx_t       *ctx;
-    ngx_http_realip_from_t      *from;
     ngx_http_realip_loc_conf_t  *rlcf;
 
     ctx = ngx_http_get_module_ctx(r, ngx_http_realip_module);
 
     if (ctx) {
         return NGX_DECLINED;
-    }
-
-    cln = ngx_pool_cleanup_add(r->pool, sizeof(ngx_http_realip_ctx_t));
-    if (cln == NULL) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
 
     rlcf = ngx_http_get_module_loc_conf(r, ngx_http_realip_module);
@@ -152,15 +150,6 @@ ngx_http_realip_handler(ngx_http_request_t *r)
 
         len = r->headers_in.x_forwarded_for->value.len;
         ip = r->headers_in.x_forwarded_for->value.data;
-
-        for (p = ip + len - 1; p > ip; p--) {
-            if (*p == ' ' || *p == ',') {
-                p++;
-                len -= p - ip;
-                ip = p;
-                break;
-            }
-        }
 
         break;
 
@@ -205,54 +194,64 @@ found:
 
     ngx_log_debug1(NGX_LOG_DEBUG_HTTP, c->log, 0, "realip: \"%s\"", ip);
 
-    /* AF_INET only */
+    addr.sockaddr = c->sockaddr;
+    addr.socklen = c->socklen;
+    /* addr.name = c->addr_text; */
 
-    if (r->connection->sockaddr->sa_family != AF_INET) {
-        return NGX_DECLINED;
+    if (ngx_http_get_forwarded_addr(r, &addr, ip, len, rlcf->from,
+                                    rlcf->recursive)
+        == NGX_OK)
+    {
+        return ngx_http_realip_set_addr(r, &addr);
     }
 
-    sin = (struct sockaddr_in *) c->sockaddr;
+    return NGX_DECLINED;
+}
 
-    from = rlcf->from->elts;
-    for (i = 0; i < rlcf->from->nelts; i++) {
 
-        ngx_log_debug3(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                       "realip: %08XD %08XD %08XD",
-                       sin->sin_addr.s_addr, from[i].mask, from[i].addr);
+static ngx_int_t
+ngx_http_realip_set_addr(ngx_http_request_t *r, ngx_addr_t *addr)
+{
+    size_t                  len;
+    u_char                 *p;
+    u_char                  text[NGX_SOCKADDR_STRLEN];
+    ngx_connection_t       *c;
+    ngx_pool_cleanup_t     *cln;
+    ngx_http_realip_ctx_t  *ctx;
 
-        if ((sin->sin_addr.s_addr & from[i].mask) == from[i].addr) {
-
-            ctx = cln->data;
-
-            ngx_http_set_ctx(r, ctx, ngx_http_realip_module);
-
-            addr = inet_addr((char *) ip);
-
-            if (addr == INADDR_NONE) {
-                return NGX_DECLINED;
-            }
-
-            p = ngx_pnalloc(c->pool, len);
-            if (p == NULL) {
-                return NGX_HTTP_INTERNAL_SERVER_ERROR;
-            }
-
-            ngx_memcpy(p, ip, len);
-
-            cln->handler = ngx_http_realip_cleanup;
-
-            ctx->connection = c;
-            ctx->addr = sin->sin_addr.s_addr;
-            ctx->addr_text = c->addr_text;
-
-            sin->sin_addr.s_addr = addr;
-
-            c->addr_text.len = len;
-            c->addr_text.data = p;
-
-            return NGX_DECLINED;
-        }
+    cln = ngx_pool_cleanup_add(r->pool, sizeof(ngx_http_realip_ctx_t));
+    if (cln == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
     }
+
+    ctx = cln->data;
+    ngx_http_set_ctx(r, ctx, ngx_http_realip_module);
+
+    c = r->connection;
+
+    len = ngx_sock_ntop(addr->sockaddr, text, NGX_SOCKADDR_STRLEN, 0);
+    if (len == 0) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    p = ngx_pnalloc(c->pool, len);
+    if (p == NULL) {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    ngx_memcpy(p, text, len);
+
+    cln->handler = ngx_http_realip_cleanup;
+
+    ctx->connection = c;
+    ctx->sockaddr = c->sockaddr;
+    ctx->socklen = c->socklen;
+    ctx->addr_text = c->addr_text;
+
+    c->sockaddr = addr->sockaddr;
+    c->socklen = addr->socklen;
+    c->addr_text.len = len;
+    c->addr_text.data = p;
 
     return NGX_DECLINED;
 }
@@ -263,14 +262,12 @@ ngx_http_realip_cleanup(void *data)
 {
     ngx_http_realip_ctx_t *ctx = data;
 
-    ngx_connection_t    *c;
-    struct sockaddr_in  *sin;
+    ngx_connection_t  *c;
 
     c = ctx->connection;
 
-    sin = (struct sockaddr_in *) c->sockaddr;
-    sin->sin_addr.s_addr = ctx->addr;
-
+    c->sockaddr = ctx->sockaddr;
+    c->socklen = ctx->socklen;
     c->addr_text = ctx->addr_text;
 }
 
@@ -282,25 +279,33 @@ ngx_http_realip_from(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 
     ngx_int_t                rc;
     ngx_str_t               *value;
-    ngx_cidr_t               cidr;
-    ngx_http_realip_from_t  *from;
+    ngx_cidr_t              *cidr;
+
+    value = cf->args->elts;
 
     if (rlcf->from == NULL) {
         rlcf->from = ngx_array_create(cf->pool, 2,
-                                      sizeof(ngx_http_realip_from_t));
+                                      sizeof(ngx_cidr_t));
         if (rlcf->from == NULL) {
             return NGX_CONF_ERROR;
         }
     }
 
-    from = ngx_array_push(rlcf->from);
-    if (from == NULL) {
+    cidr = ngx_array_push(rlcf->from);
+    if (cidr == NULL) {
         return NGX_CONF_ERROR;
     }
 
-    value = cf->args->elts;
+#if (NGX_HAVE_UNIX_DOMAIN)
 
-    rc = ngx_ptocidr(&value[1], &cidr);
+    if (ngx_strcmp(value[1].data, "unix:") == 0) {
+         cidr->family = AF_UNIX;
+         return NGX_CONF_OK;
+    }
+
+#endif
+
+    rc = ngx_ptocidr(&value[1], cidr);
 
     if (rc == NGX_ERROR) {
         ngx_conf_log_error(NGX_LOG_EMERG, cf, 0, "invalid parameter \"%V\"",
@@ -308,19 +313,10 @@ ngx_http_realip_from(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
         return NGX_CONF_ERROR;
     }
 
-    if (cidr.family != AF_INET) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                           "\"realip_from\" supports IPv4 only");
-        return NGX_CONF_ERROR;
-    }
-
     if (rc == NGX_DONE) {
         ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
                            "low address bits of %V are meaningless", &value[1]);
     }
-
-    from->mask = cidr.u.in.mask;
-    from->addr = cidr.u.in.addr;
 
     return NGX_CONF_OK;
 }
@@ -372,6 +368,7 @@ ngx_http_realip_create_loc_conf(ngx_conf_t *cf)
      */
 
     conf->type = NGX_CONF_UNSET_UINT;
+    conf->recursive = NGX_CONF_UNSET;
 
     return conf;
 }
@@ -388,6 +385,7 @@ ngx_http_realip_merge_loc_conf(ngx_conf_t *cf, void *parent, void *child)
     }
 
     ngx_conf_merge_uint_value(conf->type, prev->type, NGX_HTTP_REALIP_XREALIP);
+    ngx_conf_merge_value(conf->recursive, prev->recursive, 0);
 
     if (conf->header.len == 0) {
         conf->hash = prev->hash;

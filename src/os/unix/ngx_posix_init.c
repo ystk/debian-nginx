@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -44,11 +45,15 @@ ngx_os_init(ngx_log_t *log)
     ngx_pagesize = getpagesize();
     ngx_cacheline_size = NGX_CPU_CACHE_LINE;
 
-    n = ngx_pagesize;
-
     for (n = ngx_pagesize; n >>= 1; ngx_pagesize_shift++) { /* void */ }
 
+#if (NGX_HAVE_SC_NPROCESSORS_ONLN)
     if (ngx_ncpu == 0) {
+        ngx_ncpu = sysconf(_SC_NPROCESSORS_ONLN);
+    }
+#endif
+
+    if (ngx_ncpu < 1) {
         ngx_ncpu = 1;
     }
 
@@ -62,7 +67,7 @@ ngx_os_init(ngx_log_t *log)
 
     ngx_max_sockets = (ngx_int_t) rlmt.rlim_cur;
 
-#if (NGX_HAVE_INHERITED_NONBLOCK)
+#if (NGX_HAVE_INHERITED_NONBLOCK || NGX_HAVE_ACCEPT4)
     ngx_inherited_nonblocking = 1;
 #else
     ngx_inherited_nonblocking = 0;

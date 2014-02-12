@@ -1,6 +1,7 @@
 
 /*
  * Copyright (C) Igor Sysoev
+ * Copyright (C) Nginx, Inc.
  */
 
 
@@ -9,8 +10,7 @@
 
 
 #define NGX_HTTP_MAX_URI_CHANGES           10
-#define NGX_HTTP_MAX_SUBREQUESTS           50
-#define NGX_HTTP_MAX_CAPTURES              9
+#define NGX_HTTP_MAX_SUBREQUESTS           200
 
 /* must be 2^n */
 #define NGX_HTTP_LC_HEADER_LEN             32
@@ -38,7 +38,8 @@
 #define NGX_HTTP_PROPPATCH                 0x0800
 #define NGX_HTTP_LOCK                      0x1000
 #define NGX_HTTP_UNLOCK                    0x2000
-#define NGX_HTTP_TRACE                     0x4000
+#define NGX_HTTP_PATCH                     0x4000
+#define NGX_HTTP_TRACE                     0x8000
 
 #define NGX_HTTP_CONNECTION_CLOSE          1
 #define NGX_HTTP_CONNECTION_KEEP_ALIVE     2
@@ -65,13 +66,16 @@
 
 #define NGX_HTTP_OK                        200
 #define NGX_HTTP_CREATED                   201
+#define NGX_HTTP_ACCEPTED                  202
 #define NGX_HTTP_NO_CONTENT                204
 #define NGX_HTTP_PARTIAL_CONTENT           206
 
 #define NGX_HTTP_SPECIAL_RESPONSE          300
 #define NGX_HTTP_MOVED_PERMANENTLY         301
 #define NGX_HTTP_MOVED_TEMPORARILY         302
+#define NGX_HTTP_SEE_OTHER                 303
 #define NGX_HTTP_NOT_MODIFIED              304
+#define NGX_HTTP_TEMPORARY_REDIRECT        307
 
 #define NGX_HTTP_BAD_REQUEST               400
 #define NGX_HTTP_UNAUTHORIZED              401
@@ -93,7 +97,9 @@
 /* The special code to close connection without any response */
 #define NGX_HTTP_CLOSE                     444
 
-#define NGX_HTTP_OWN_CODES                 495
+#define NGX_HTTP_NGINX_CODES               494
+
+#define NGX_HTTP_REQUEST_HEADER_TOO_LARGE  494
 
 #define NGX_HTTPS_CERT_ERROR               495
 #define NGX_HTTPS_NO_CERT                  496
@@ -165,6 +171,7 @@ typedef struct {
     ngx_table_elt_t                  *host;
     ngx_table_elt_t                  *connection;
     ngx_table_elt_t                  *if_modified_since;
+    ngx_table_elt_t                  *if_unmodified_since;
     ngx_table_elt_t                  *user_agent;
     ngx_table_elt_t                  *referer;
     ngx_table_elt_t                  *content_length;
@@ -216,7 +223,6 @@ typedef struct {
 
     unsigned                          connection_type:2;
     unsigned                          msie:1;
-    unsigned                          msie4:1;
     unsigned                          msie6:1;
     unsigned                          opera:1;
     unsigned                          gecko:1;
@@ -419,6 +425,12 @@ struct ngx_http_request_s {
 
     ngx_http_cleanup_t               *cleanup;
 
+    unsigned                          subrequests:8;
+    unsigned                          count:8;
+    unsigned                          blocked:8;
+
+    unsigned                          aio:1;
+
     unsigned                          http_state:4;
 
     /* URI with "/." and on Win32 with "//" */
@@ -430,8 +442,12 @@ struct ngx_http_request_s {
     /* URI with "+" */
     unsigned                          plus_in_uri:1;
 
+    /* URI with " " */
+    unsigned                          space_in_uri:1;
+
     unsigned                          invalid_header:1;
 
+    unsigned                          add_uri_to_alias:1;
     unsigned                          valid_location:1;
     unsigned                          valid_unparsed_uri:1;
     unsigned                          uri_changed:1;
@@ -463,10 +479,10 @@ struct ngx_http_request_s {
 
     /*
      * instead of using the request context data in
-     * ngx_http_limit_zone_module and ngx_http_limit_req_module
+     * ngx_http_limit_conn_module and ngx_http_limit_req_module
      * we use the single bits in the request structure
      */
-    unsigned                          limit_zone_set:1;
+    unsigned                          limit_conn_set:1;
     unsigned                          limit_req_set:1;
 
 #if 0
@@ -477,7 +493,6 @@ struct ngx_http_request_s {
     unsigned                          plain_http:1;
     unsigned                          chunked:1;
     unsigned                          header_only:1;
-    unsigned                          zero_body:1;
     unsigned                          keepalive:1;
     unsigned                          lingering_close:1;
     unsigned                          discard_body:1;
@@ -506,11 +521,24 @@ struct ngx_http_request_s {
     unsigned                          stat_writing:1;
 #endif
 
-    unsigned                          subrequests:8;
-
     /* used to parse HTTP headers */
 
     ngx_uint_t                        state;
+
+    ngx_uint_t                        header_hash;
+    ngx_uint_t                        lowcase_index;
+    u_char                            lowcase_header[NGX_HTTP_LC_HEADER_LEN];
+
+    u_char                           *header_name_start;
+    u_char                           *header_name_end;
+    u_char                           *header_start;
+    u_char                           *header_end;
+
+    /*
+     * a memory that can be reused after parsing a request line
+     * via ngx_http_ephemeral_t
+     */
+
     u_char                           *uri_start;
     u_char                           *uri_end;
     u_char                           *uri_ext;
@@ -524,18 +552,18 @@ struct ngx_http_request_s {
     u_char                           *host_end;
     u_char                           *port_start;
     u_char                           *port_end;
-    u_char                           *header_name_start;
-    u_char                           *header_name_end;
-    u_char                           *header_start;
-    u_char                           *header_end;
 
     unsigned                          http_minor:16;
     unsigned                          http_major:16;
-
-    ngx_uint_t                        header_hash;
-    ngx_uint_t                        lowcase_index;
-    u_char                            lowcase_header[NGX_HTTP_LC_HEADER_LEN];
 };
+
+
+typedef struct {
+    ngx_http_posted_request_t         terminal_posted_request;
+#if (NGX_HAVE_AIO_SENDFILE)
+    u_char                            aio_preload;
+#endif
+} ngx_http_ephemeral_t;
 
 
 extern ngx_http_header_t       ngx_http_headers_in[];
