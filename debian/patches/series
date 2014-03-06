@@ -1,3 +1,6 @@
 nginx-upstream-fair.diff
 dlopen.diff
 fix_reloading_ipv6.diff
+CVE-2011-4315.diff
+CVE-2012-1180.diff
+CVE-2012-4929.diff

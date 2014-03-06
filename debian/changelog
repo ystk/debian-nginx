@@ -1,3 +1,29 @@
+nginx (0.7.67-3+squeeze3) stable-security; urgency=high
+
+  * debian/patches/CVE-2012-4929.diff:
+    + Fixes the vulnerability to CRIME SSL attack. See: CVE-2012-4929 for more
+      details.(Closes: #700426).
+
+ -- Cyril Lavier <cyril.lavier@davromaniak.eu>  Wed, 13 Feb 2013 14:32:44 +0100
+
+nginx (0.7.67-3+squeeze2) stable-security; urgency=high
+
+  * debian/patches/CVE-2012-1180.diff:
+    + Fixed the memory issue found on March 15th 2012. See: CVE-2012-1180 for
+      more details.
+  * debian/control:
+    + Added myself as uploader.
+
+ -- Cyril Lavier <cyril.lavier@davromaniak.eu>  Fri, 16 Mar 2012 17:55:22 +0530
+
+nginx (0.7.67-3+squeeze1) stable; urgency=low
+
+  * debian/patches/CVE-2011-4315.diff:
+    + Fixed compression pointer processing in DNS response greater than 255
+      bytes. See: CVE-2011-4315 for more details.
+
+ -- Kartik Mistry <kartik@debian.org>  Wed, 23 Nov 2011 13:47:10 +0530
+
 nginx (0.7.67-3) unstable; urgency=low
 
   * debian/rules:
