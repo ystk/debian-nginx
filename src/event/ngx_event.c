@@ -56,7 +56,6 @@ ngx_uint_t            ngx_accept_events;
 ngx_uint_t            ngx_accept_mutex_held;
 ngx_msec_t            ngx_accept_mutex_delay;
 ngx_int_t             ngx_accept_disabled;
-ngx_file_t            ngx_accept_mutex_lock_file;
 
 
 #if (NGX_STAT_STUB)
@@ -73,6 +72,8 @@ ngx_atomic_t   ngx_stat_reading0;
 ngx_atomic_t  *ngx_stat_reading = &ngx_stat_reading0;
 ngx_atomic_t   ngx_stat_writing0;
 ngx_atomic_t  *ngx_stat_writing = &ngx_stat_writing0;
+ngx_atomic_t   ngx_stat_waiting0;
+ngx_atomic_t  *ngx_stat_waiting = &ngx_stat_waiting0;
 
 #endif
 
@@ -511,7 +512,8 @@ ngx_event_module_init(ngx_cycle_t *cycle)
            + cl          /* ngx_stat_requests */
            + cl          /* ngx_stat_active */
            + cl          /* ngx_stat_reading */
-           + cl;         /* ngx_stat_writing */
+           + cl          /* ngx_stat_writing */
+           + cl;         /* ngx_stat_waiting */
 
 #endif
 
@@ -558,6 +560,7 @@ ngx_event_module_init(ngx_cycle_t *cycle)
     ngx_stat_active = (ngx_atomic_t *) (shared + 6 * cl);
     ngx_stat_reading = (ngx_atomic_t *) (shared + 7 * cl);
     ngx_stat_writing = (ngx_atomic_t *) (shared + 8 * cl);
+    ngx_stat_waiting = (ngx_atomic_t *) (shared + 9 * cl);
 
 #endif
 
@@ -567,7 +570,7 @@ ngx_event_module_init(ngx_cycle_t *cycle)
 
 #if !(NGX_WIN32)
 
-void
+static void
 ngx_timer_signal_handler(int signo)
 {
     ngx_event_timer_alarm = 1;
@@ -602,6 +605,17 @@ ngx_event_process_init(ngx_cycle_t *cycle)
     } else {
         ngx_use_accept_mutex = 0;
     }
+
+#if (NGX_WIN32)
+
+    /*
+     * disable accept mutex on win32 as it may cause deadlock if
+     * grabbed by a process which can't accept connections
+     */
+
+    ngx_use_accept_mutex = 0;
+
+#endif
 
 #if (NGX_THREADS)
     ngx_posted_events_mutex = ngx_mutex_init(cycle->log, 0);
@@ -892,6 +906,10 @@ ngx_events_block(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
     ngx_conf_t            pcf;
     ngx_event_module_t   *m;
 
+    if (*(void **) conf) {
+        return "is duplicate";
+    }
+
     /* count the number of the event modules and set up their indices */
 
     ngx_event_max_module = 0;
@@ -1062,50 +1080,91 @@ ngx_event_debug_connection(ngx_conf_t *cf, ngx_command_t *cmd, void *conf)
 #if (NGX_DEBUG)
     ngx_event_conf_t  *ecf = conf;
 
-    ngx_int_t           rc;
-    ngx_str_t          *value;
-    struct hostent     *h;
-    ngx_cidr_t         *cidr;
+    ngx_int_t             rc;
+    ngx_str_t            *value;
+    ngx_url_t             u;
+    ngx_cidr_t            c, *cidr;
+    ngx_uint_t            i;
+    struct sockaddr_in   *sin;
+#if (NGX_HAVE_INET6)
+    struct sockaddr_in6  *sin6;
+#endif
 
     value = cf->args->elts;
-
-    cidr = ngx_array_push(&ecf->debug_connection);
-    if (cidr == NULL) {
-        return NGX_CONF_ERROR;
-    }
 
 #if (NGX_HAVE_UNIX_DOMAIN)
 
     if (ngx_strcmp(value[1].data, "unix:") == 0) {
-         cidr->family = AF_UNIX;
-         return NGX_CONF_OK;
+        cidr = ngx_array_push(&ecf->debug_connection);
+        if (cidr == NULL) {
+            return NGX_CONF_ERROR;
+        }
+
+        cidr->family = AF_UNIX;
+        return NGX_CONF_OK;
     }
 
 #endif
 
-    rc = ngx_ptocidr(&value[1], cidr);
+    rc = ngx_ptocidr(&value[1], &c);
 
-    if (rc == NGX_DONE) {
-        ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
-                           "low address bits of %V are meaningless", &value[1]);
+    if (rc != NGX_ERROR) {
+        if (rc == NGX_DONE) {
+            ngx_conf_log_error(NGX_LOG_WARN, cf, 0,
+                               "low address bits of %V are meaningless",
+                               &value[1]);
+        }
+
+        cidr = ngx_array_push(&ecf->debug_connection);
+        if (cidr == NULL) {
+            return NGX_CONF_ERROR;
+        }
+
+        *cidr = c;
+
         return NGX_CONF_OK;
     }
 
-    if (rc == NGX_OK) {
-        return NGX_CONF_OK;
-    }
+    ngx_memzero(&u, sizeof(ngx_url_t));
+    u.host = value[1];
 
-    h = gethostbyname((char *) value[1].data);
+    if (ngx_inet_resolve_host(cf->pool, &u) != NGX_OK) {
+        if (u.err) {
+            ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
+                               "%s in debug_connection \"%V\"",
+                               u.err, &u.host);
+        }
 
-    if (h == NULL || h->h_addr_list[0] == NULL) {
-        ngx_conf_log_error(NGX_LOG_EMERG, cf, 0,
-                           "host \"%s\" not found", value[1].data);
         return NGX_CONF_ERROR;
     }
 
-    cidr->family = AF_INET;
-    cidr->u.in.mask = 0xffffffff;
-    cidr->u.in.addr = *(in_addr_t *)(h->h_addr_list[0]);
+    cidr = ngx_array_push_n(&ecf->debug_connection, u.naddrs);
+    if (cidr == NULL) {
+        return NGX_CONF_ERROR;
+    }
+
+    ngx_memzero(cidr, u.naddrs * sizeof(ngx_cidr_t));
+
+    for (i = 0; i < u.naddrs; i++) {
+        cidr[i].family = u.addrs[i].sockaddr->sa_family;
+
+        switch (cidr[i].family) {
+
+#if (NGX_HAVE_INET6)
+        case AF_INET6:
+            sin6 = (struct sockaddr_in6 *) u.addrs[i].sockaddr;
+            cidr[i].u.in6.addr = sin6->sin6_addr;
+            ngx_memset(cidr[i].u.in6.mask.s6_addr, 0xff, 16);
+            break;
+#endif
+
+        default: /* AF_INET */
+            sin = (struct sockaddr_in *) u.addrs[i].sockaddr;
+            cidr[i].u.in.addr = sin->sin_addr.s_addr;
+            cidr[i].u.in.mask = 0xffffffff;
+            break;
+        }
+    }
 
 #else
 
@@ -1173,7 +1232,7 @@ ngx_event_core_init_conf(ngx_cycle_t *cycle, void *conf)
     fd = epoll_create(100);
 
     if (fd != -1) {
-        close(fd);
+        (void) close(fd);
         module = &ngx_epoll_module;
 
     } else if (ngx_errno != NGX_ENOSYS) {
