@@ -1,10 +1,20 @@
+
+/*
+ * Copyright (C) Yichun Zhang (agentzh)
+ */
+
+
 #ifndef DDEBUG
 #define DDEBUG 0
 #endif
 #include "ddebug.h"
 
+
 #include "ngx_http_echo_util.h"
 #include "ngx_http_echo_sleep.h"
+
+
+ngx_uint_t  ngx_http_echo_content_length_hash = 0;
 
 
 ngx_http_echo_ctx_t *
@@ -27,8 +37,8 @@ ngx_http_echo_create_ctx(ngx_http_request_t *r)
 
 ngx_int_t
 ngx_http_echo_eval_cmd_args(ngx_http_request_t *r,
-        ngx_http_echo_cmd_t *cmd, ngx_array_t *computed_args,
-        ngx_array_t *opts)
+    ngx_http_echo_cmd_t *cmd, ngx_array_t *computed_args,
+    ngx_array_t *opts)
 {
     ngx_uint_t                       i;
     ngx_array_t                     *args = cmd->args;
@@ -88,44 +98,14 @@ ngx_http_echo_eval_cmd_args(ngx_http_request_t *r,
 
 ngx_int_t
 ngx_http_echo_send_chain_link(ngx_http_request_t* r,
-        ngx_http_echo_ctx_t *ctx, ngx_chain_t *in)
+    ngx_http_echo_ctx_t *ctx, ngx_chain_t *in)
 {
     ngx_int_t        rc;
-    size_t           size;
-    ngx_chain_t     *cl;
 
     rc = ngx_http_echo_send_header_if_needed(r, ctx);
 
     if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
         return rc;
-    }
-
-    if (rc == NGX_ERROR) {
-        return NGX_HTTP_INTERNAL_SERVER_ERROR;
-    }
-
-    if (r->http_version < NGX_HTTP_VERSION_11 && !ctx->headers_sent) {
-        ctx->headers_sent = 1;
-
-        size = 0;
-
-        for (cl = in; cl; cl = cl->next) {
-            size += ngx_buf_size(cl->buf);
-        }
-
-        r->headers_out.content_length_n = (off_t) size;
-
-        if (r->headers_out.content_length) {
-            r->headers_out.content_length->hash = 0;
-        }
-
-        r->headers_out.content_length = NULL;
-
-        rc = ngx_http_send_header(r);
-
-        if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
-            return rc;
-        }
     }
 
     if (in == NULL) {
@@ -154,12 +134,14 @@ ngx_http_echo_send_chain_link(ngx_http_request_t* r,
 
 ngx_int_t
 ngx_http_echo_send_header_if_needed(ngx_http_request_t* r,
-        ngx_http_echo_ctx_t *ctx)
+    ngx_http_echo_ctx_t *ctx)
 {
-    /* ngx_int_t   rc; */
+    ngx_http_echo_loc_conf_t    *elcf;
 
-    if ( ! ctx->headers_sent ) {
-        r->headers_out.status = NGX_HTTP_OK;
+    if (!r->header_sent) {
+        elcf = ngx_http_get_module_loc_conf(r, ngx_http_echo_module);
+
+        r->headers_out.status = (ngx_uint_t) elcf->status;
 
         if (ngx_http_set_content_type(r) != NGX_OK) {
             return NGX_HTTP_INTERNAL_SERVER_ERROR;
@@ -168,10 +150,7 @@ ngx_http_echo_send_header_if_needed(ngx_http_request_t* r,
         ngx_http_clear_content_length(r);
         ngx_http_clear_accept_ranges(r);
 
-        if (r->http_version >= NGX_HTTP_VERSION_11) {
-            ctx->headers_sent = 1;
-            return ngx_http_send_header(r);
-        }
+        return ngx_http_send_header(r);
     }
 
     return NGX_OK;
@@ -235,7 +214,7 @@ ngx_http_echo_strlstrn(u_char *s1, u_char *last, u_char *s2, size_t n)
 
 ngx_int_t
 ngx_http_echo_post_request_at_head(ngx_http_request_t *r,
-        ngx_http_posted_request_t *pr)
+    ngx_http_posted_request_t *pr)
 {
     dd_enter();
 
@@ -256,7 +235,7 @@ ngx_http_echo_post_request_at_head(ngx_http_request_t *r,
 
 u_char *
 ngx_http_echo_rebase_path(ngx_pool_t *pool, u_char *src, size_t osize,
-        size_t *nsize)
+    size_t *nsize)
 {
     u_char            *p, *dst;
 

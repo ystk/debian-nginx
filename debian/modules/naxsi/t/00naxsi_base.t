@@ -572,7 +572,7 @@ Content-Type: multipart/form-data; boundary=---------------------------103832778
 Content-Length: 355
 --- request eval
 use URI::Escape;
-"POST /\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nMyName\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"married\"\r\n\r\nnot single\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"male\"\r\n\r\nyes\r\n-----------------------------103832778631715--\r\n"
+"POST /\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nMyName\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"married\"\r\n\r\nnot single\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"male\"\r\n\r\nyes\r\n-----------------------------103832778631715--\r\n\r\n"
 --- error_code: 200
 === TEST 25: Testing MULTIPART POSTs (NO CONTENT LEN)
 --- user_files
@@ -601,7 +601,7 @@ location /RequestDenied {
 Content-Type: multipart/form-data; boundary=---------------------------103832778631715
 --- request eval
 use URI::Escape;
-"POST /\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nMyName\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"married\"\r\n\r\nnot single\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"male\"\r\n\r\nyes\r\n-----------------------------103832778631715--\r\n"
+"POST /\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nMyName\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"married\"\r\n\r\nnot single\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"male\"\r\n\r\nyes\r\n-----------------------------103832778631715--\r\n\r\n"
 --- error_code: 200
 === TEST 26: Testing MULTIPART POSTs (BAD CONTENT LEN)
 --- user_files
@@ -632,7 +632,7 @@ Content-Length: 42
 --- request eval
 use URI::Escape;
 "POST /\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nMyName\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"married\"\r\n\r\nnot single\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"male\"\r\n\r\nyes\r\n-----------------------------103832778631715--\r\n"
---- error_code: 200
+--- error_code: 412
 === TEST 26.1: Testing MULTIPART POSTs (BAD CONTENT LEN)
 #nginx changed his way, no data is cut to content lenght header, so this test is obsolete
 --- user_files
@@ -663,7 +663,7 @@ Content-Length: 42
 --- request eval
 use URI::Escape;
 "POST /\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"name\"\r\n\r\nMy<aaaaa>Name\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"married\"\r\n\r\nnot single\r\n-----------------------------103832778631715\r\nContent-Disposition: form-data; name=\"male\"\r\n\r\ny<alert>es\r\n-----------------------------103832778631715--\r\n"
---- error_code: 200
+--- error_code: 412
 === TEST 27: Obvious POST XSS (multipart)
 --- user_files
 >>> foobar
@@ -968,7 +968,7 @@ GET /?z=&%00yesone
 eh yo
 --- http_config
 include /etc/nginx/naxsi_core.rules;
-MainRule "str:yesone" "msg:foobar test pattern" "mz:ARGS" "s:$TESTSCORE:42" id:1999;
+#MainRule "str:yesone" "msg:foobar test pattern" "mz:ARGS" "s:$TESTSCORE:42" id:1999;
 --- config
 location / {
 	 #LearningMode;
@@ -987,7 +987,7 @@ location /RequestDenied {
 }
 --- request
 GET /?z=&y%00esone
---- error_code: 200
+--- error_code: 412
 
 
 

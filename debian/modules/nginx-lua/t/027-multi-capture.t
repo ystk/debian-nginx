@@ -1,10 +1,9 @@
 # vim:set ft= ts=4 sw=4 et fdm=marker:
 
 use lib 'lib';
-use Test::Nginx::Socket;
+use Test::Nginx::Socket::Lua;
 
 repeat_each(10);
-#repeat_each(1);
 
 plan tests => repeat_each() * (blocks() * 2 + 2);
 
@@ -657,6 +656,52 @@ content f: f
     }
 --- request
     GET /main
+--- stap2
+global delta = "  "
+
+M(http-subrequest-start) {
+    r = $arg1
+    n = ngx_http_subreq_depth(r)
+    pr = ngx_http_req_parent(r)
+    printf("%sbegin %s -> %s (%d)\n", ngx_indent(n, delta),
+        ngx_http_req_uri(pr),
+        ngx_http_req_uri(r),
+        n)
+}
+
+F(ngx_http_lua_run_thread) {
+    r = $r
+    uri = ngx_http_req_uri(r)
+    if (uri == "/main") {
+        printf("run thread %s: %d\n", uri, $nret)
+        #print_ubacktrace()
+    }
+}
+
+M(http-lua-info) {
+    uri = ngx_http_req_uri($r)
+    #if (uri == "/main") {
+    printf("XXX info: %s: %s", uri, user_string($arg1))
+    #}
+}
+
+F(ngx_http_lua_post_subrequest) {
+    r = $r
+    n = ngx_http_subreq_depth(r)
+    pr = ngx_http_req_parent(r)
+
+    printf("%send %s -> %s (%d)\n", ngx_indent(n, delta),
+        ngx_http_req_uri(r),
+        ngx_http_req_uri(pr),
+        n)
+}
+
+F(ngx_http_lua_handle_subreq_responses) {
+    r = $r
+    n = ngx_http_subreq_depth(r)
+    printf("%shandle res %s (%d)\n", ngx_indent(n, delta), ngx_http_req_uri(r), n)
+}
+
 --- response_body
 rewrite a: a
 rewrite b: b
@@ -666,4 +711,39 @@ access B: B
 content d: d
 content e: e
 content f: f
+
+
+
+=== TEST 13: proxy_cache_lock in subrequests
+--- http_config
+proxy_cache_lock on;
+proxy_cache_lock_timeout 100ms;
+proxy_connect_timeout 300ms;
+
+proxy_cache_path conf/cache levels=1:2 keys_zone=STATIC:10m inactive=10m max_size=1m;
+
+--- config
+    location /foo {
+        content_by_lua '
+            local res1, res2 = ngx.location.capture_multi{
+                { "/proxy" },
+                { "/proxy" },
+                { "/proxy" },
+                { "/proxy" },
+            }
+            ngx.say("ok")
+        ';
+    }
+
+    location = /proxy {
+            proxy_cache STATIC;
+            proxy_pass http://agentzh.org:12345;
+            proxy_cache_key $proxy_host$uri$args;
+            proxy_cache_valid any 1s;
+            #proxy_http_version 1.1;
+    }
+--- request
+    GET /foo
+--- response_body
+ok
 

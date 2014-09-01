@@ -1,6 +1,6 @@
 # vim:set ft= ts=4 sw=4 et fdm=marker:
 use lib 'lib';
-use Test::Nginx::Socket;
+use Test::Nginx::Socket::Lua;
 
 #worker_connections(1014);
 #master_process_enabled(1);
@@ -8,7 +8,7 @@ log_level('debug'); # to ensure any log-level can be outputed
 
 repeat_each(2);
 
-plan tests => repeat_each() * (blocks() * 3 + 3);
+plan tests => repeat_each() * (blocks() * 3 + 4);
 
 #no_diff();
 #no_long_string();
@@ -400,4 +400,57 @@ GET /log
 done
 --- error_log eval
 qr/\[error\] \S+: \S+ \[lua\] test.lua:6: bar\(\): hello, log12343.14159/
+
+
+
+=== TEST 20: ngx.log with bad levels (ngx.ERROR, -1)
+--- config
+    location /log {
+        content_by_lua '
+            ngx.log(ngx.ERROR, "hello lua")
+            ngx.say("done")
+        ';
+    }
+--- request
+GET /log
+--- response_body_like: 500 Internal Server Error
+--- error_code: 500
+--- error_log
+bad log level: -1
+
+
+
+=== TEST 21: ngx.log with bad levels (9)
+--- config
+    location /log {
+        content_by_lua '
+            ngx.log(9, "hello lua")
+            ngx.say("done")
+        ';
+    }
+--- request
+GET /log
+--- response_body_like: 500 Internal Server Error
+--- error_code: 500
+--- error_log
+bad log level: 9
+
+
+
+=== TEST 22: \0 in the log message
+--- config
+    location = /t {
+        content_by_lua '
+            ngx.log(ngx.WARN, "hello\\0world")
+            ngx.say("ok")
+        ';
+    }
+--- request
+GET /t
+--- response_body
+ok
+--- no_error_log
+[error]
+--- error_log eval
+"2: hello\0world, client: "
 

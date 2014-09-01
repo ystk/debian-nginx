@@ -12,6 +12,7 @@
 #if (NGX_HPUX)
 #define _XOPEN_SOURCE
 #define _XOPEN_SOURCE_EXTENDED  1
+#define _HPUX_ALT_XOPEN_SOCKET_API
 #endif
 
 
@@ -38,6 +39,7 @@
 #include <stddef.h>             /* offsetof() */
 #include <stdio.h>
 #include <stdlib.h>
+#include <ctype.h>
 #include <errno.h>
 #include <string.h>
 #include <signal.h>

@@ -1,18 +1,24 @@
+
+/*
+ * Copyright (C) Xiaozhe Wang (chaoslawful)
+ * Copyright (C) Yichun Zhang (agentzh)
+ */
+
+
 #ifndef DDEBUG
 #define DDEBUG 0
 #endif
 #include "ddebug.h"
 
+
 #include "ngx_http_lua_log.h"
+#include "ngx_http_lua_util.h"
 
 
 static int ngx_http_lua_print(lua_State *L);
 static int ngx_http_lua_ngx_log(lua_State *L);
-
-
-static int log_wrapper(ngx_http_request_t *r, const char *ident,
-        ngx_uint_t level, lua_State *L);
-
+static int log_wrapper(ngx_log_t *log, const char *ident,
+    ngx_uint_t level, lua_State *L);
 static void ngx_http_lua_inject_log_consts(lua_State *L);
 
 
@@ -26,30 +32,36 @@ static void ngx_http_lua_inject_log_consts(lua_State *L);
 int
 ngx_http_lua_ngx_log(lua_State *L)
 {
+    ngx_log_t                   *log;
     ngx_http_request_t          *r;
+    const char                  *msg;
+    int                          level;
 
-    lua_getglobal(L, GLOBALS_SYMBOL_REQUEST);
-    r = lua_touserdata(L, -1);
-    lua_pop(L, 1);
+    r = ngx_http_lua_get_req(L);
 
     if (r && r->connection && r->connection->log) {
-        int level = luaL_checkint(L, 1);
+        log = r->connection->log;
 
-        /* remove log-level param from stack */
-        lua_remove(L, 1);
-
-        return log_wrapper(r, "[lua] ", (ngx_uint_t) level, L);
+    } else {
+        log = ngx_cycle->log;
     }
 
-    dd("(lua-log) can't output log due to invalid logging context!");
+    level = luaL_checkint(L, 1);
+    if (level < NGX_LOG_STDERR || level > NGX_LOG_DEBUG) {
+        msg = lua_pushfstring(L, "bad log level: %d", level);
+        return luaL_argerror(L, 1, msg);
+    }
 
-    return 0;
+    /* remove log-level param from stack */
+    lua_remove(L, 1);
+
+    return log_wrapper(log, "[lua] ", (ngx_uint_t) level, L);
 }
 
 
 /**
  * Override Lua print function, output message to nginx error logs. Equal to
- * ngx.log(ngx.ERR, ...).
+ * ngx.log(ngx.NOTICE, ...).
  *
  * @param L Lua state pointer
  * @retval always 0 (don't return values to Lua)
@@ -57,27 +69,25 @@ ngx_http_lua_ngx_log(lua_State *L)
 int
 ngx_http_lua_print(lua_State *L)
 {
+    ngx_log_t                   *log;
     ngx_http_request_t          *r;
 
-    lua_getglobal(L, GLOBALS_SYMBOL_REQUEST);
-    r = lua_touserdata(L, -1);
-    lua_pop(L, 1);
+    r = ngx_http_lua_get_req(L);
 
     if (r && r->connection && r->connection->log) {
-        return log_wrapper(r, "[lua] ", NGX_LOG_NOTICE, L);
+        log = r->connection->log;
 
     } else {
-        dd("(lua-print) can't output print content to error log due "
-                "to invalid logging context!");
+        log = ngx_cycle->log;
     }
 
-    return 0;
+    return log_wrapper(log, "[lua] ", NGX_LOG_NOTICE, L);
 }
 
 
 static int
-log_wrapper(ngx_http_request_t *r, const char *ident, ngx_uint_t level,
-        lua_State *L)
+log_wrapper(ngx_log_t *log, const char *ident, ngx_uint_t level,
+    lua_State *L)
 {
     u_char              *buf;
     u_char              *p, *q;
@@ -89,7 +99,7 @@ log_wrapper(ngx_http_request_t *r, const char *ident, ngx_uint_t level,
     const char          *msg;
     lua_Debug            ar;
 
-    if (level > r->connection->log->log_level) {
+    if (level > log->log_level) {
         return 0;
     }
 
@@ -160,12 +170,13 @@ log_wrapper(ngx_http_request_t *r, const char *ident, ngx_uint_t level,
 
             default:
                 msg = lua_pushfstring(L, "string, number, boolean, or nil "
-                         "expected, got %s", lua_typename(L, type));
+                                      "expected, got %s",
+                                      lua_typename(L, type));
                 return luaL_argerror(L, i, msg);
         }
     }
 
-    buf = lua_newuserdata(L, size + 1);
+    buf = lua_newuserdata(L, size);
 
     p = ngx_copy(buf, name.data, name.len);
 
@@ -229,14 +240,12 @@ log_wrapper(ngx_http_request_t *r, const char *ident, ngx_uint_t level,
         }
     }
 
-    *p++ = '\0';
-
-    if (p - buf > (off_t) (size + 1)) {
+    if (p - buf > (off_t) size) {
         return luaL_error(L, "buffer error: %d > %d", (int) (p - buf),
-                          (int) (size + 1));
+                          (int) size);
     }
 
-    ngx_log_error(level, r->connection->log, 0, "%s%s", ident, buf);
+    ngx_log_error(level, log, 0, "%s%*s", ident, (size_t) (p - buf), buf);
 
     return 0;
 }
@@ -288,3 +297,4 @@ ngx_http_lua_inject_log_consts(lua_State *L)
     /* }}} */
 }
 
+/* vi:set ft=c ts=4 sw=4 et fdm=marker: */

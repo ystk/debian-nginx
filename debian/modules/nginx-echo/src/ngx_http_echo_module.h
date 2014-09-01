@@ -82,7 +82,13 @@ typedef struct {
 
     unsigned         seen_leading_output;
 
+    ngx_int_t        status;
 } ngx_http_echo_loc_conf_t;
+
+
+typedef struct {
+    ngx_int_t       requires_filter;
+} ngx_http_echo_main_conf_t;
 
 
 typedef struct {
@@ -115,7 +121,6 @@ typedef struct {
 
     ngx_uint_t       counter;
 
-    unsigned         headers_sent:1;
     unsigned         before_body_sent:1;
     unsigned         skip_filter:1;
 

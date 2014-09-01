@@ -1,18 +1,441 @@
-nginx (1.2.1-2.2+wheezy2) stable-security; urgency=high
+nginx (1.6.1-1) unstable; urgency=medium
 
-  * debian/patches/fix-CVE-2013-4547.patch:
-    + Proper backtracking after space in a request line.
-      See: CVE:2013-4547 for more details.
+  [ Christos Trochalakis ]
+  * New upstream release.
+    Handle CVE-2014-3556 SMTP STARTTLS vulnerability (Closes: #757196)
+    http://mailman.nginx.org/pipermail/nginx-announce/2014/000144.html
 
- -- Christos Trochalakis <yatiohi@ideopolis.gr>  Wed, 20 Nov 2013 00:36:19 +0200
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Wed, 06 Aug 2014 10:05:08 +0300
 
-nginx (1.2.1-2.2+wheezy1) stable-security; urgency=high
+nginx (1.6.0-2) unstable; urgency=medium
 
-  * debian/patches/fix-CVE-2013-2070.patch:
-    + Fixed the buffer overflow issue found on may 13th 2013.
-      See: CVE-2013-2070 for more details.
+  [ gregor herrmann ]
+  * Patch from Gregor Herrmann <gregoa@debian.org>:
+    Fix "hardcodes /usr/lib/perl5":
+    - drop debian/nginx-extras.dirs, not needed, dh_install uses the
+      directories from debian/nginx-extras.install
+    - make debian/nginx-extras.install executable, and use $Config{vendorarch}
+      for the perl library path there
+    (Closes: #752796)
 
- -- Cyril Lavier <cyril.lavier@davromaniak.eu>  Wed, 05 Jun 2013 10:41:45 +0200
+ -- Kartik Mistry <kartik@debian.org>  Tue, 29 Jul 2014 04:56:03 +0000
+
+nginx (1.6.0-1) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * New upstream release.
+  * debian/rules:
+    + Enable auth request http module. (Closes: #725732)
+  * debian/patches/series:
+    + Remove backported openssl guard patch.
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Thu, 24 Apr 2014 19:23:22 +0300
+
+nginx (1.4.7-2) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * debian/rules:
+    + Convert to dh $@
+      As a side effect, fixes make dependency issues (Closes: #744050)
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Thu, 17 Apr 2014 14:30:27 +0300
+
+nginx (1.4.7-1) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * New upstream release. (Closes: #742059)
+    + Fixes pottential arbitrary code execution (CVE-2014-0133)
+      Debian build was not vulnerable since it was compiled
+      with the --with-debug configure option.
+  * debian/modules/nginx-http-push:
+    + Update to v0.711 (Closes: #732251)
+  * debian/modules/headers-more-nginx-module:
+    + Update to v0.25, containing several bugfixes.
+  * debian/modules/nginx-echo:
+    + Update to v0.51, containing several bugfixes.
+  * debian/modules/nginx-dav-ext-module:
+    + Update to v0.0.3, containing some uri encoding fixes.
+  * debian/modules/ngx_http_substitutions_filter_module:
+    + Update to v0.6.4, containing some enhancements.
+  * debian/modules/nginx-auth-pam:
+    + Update to v1.3.
+      This version contains our downstream patch (See: #721702)
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Tue, 18 Mar 2014 22:03:47 +0200
+
+nginx (1.4.6-1) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * New upstream release.
+  * debian/rules:
+    + Avoid double declaration of hardening flags.
+    + Expand buildflags so the build log is easier to follow.
+    + Switch to --with--cc-opt, --with-ld-opt configure flags.
+      Nginx is now compiled with --Werror, making all warnings
+      into errors.
+    + Split common configure options.
+    + Enable realip module for nginx-light.
+    + Enable debug module for nginx-light and nginx-extras.
+  * debian/patches/perl-use-dpkg-buildflags.patch:
+    + Rewrite patch to just just override LDDLFLAGS and not
+      CCFLAGS since this is handled by --with-cc-opt.
+  * debian/watch, debian/upstream/signing-key.asc:
+    + Fix upstream signature verification.
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Tue, 04 Mar 2014 18:06:55 +0200
+
+nginx (1.4.5-1) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * New upstream release.
+  * debian/modules/nginx-lua:
+    + Update nginx-lua to v0.9.4
+  * debian/nginx-naxsi-ui.preinst:
+    + Fix exit status issue (Closes: #735152)
+  * debian/control:
+    + Fix arch:all to arch:any dependencies
+    + Make nginx depend on specific flavor version
+  * debian/nginx-*.postinst:
+    + Make nginx start by default (Closes: #735551)
+  * debian/nginx-*.prerm:
+    + No need to check for invoke-rc.d,
+      correctly set the exit code on error
+  * debian/nginx-common.nginx.init:
+    + Rewrite some parts of the initscript
+    + Introduce rotate command
+    + Introduce upgrade command
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Thu, 13 Feb 2014 11:41:49 +0200
+
+nginx (1.4.4-4) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * debian/nginx-common.postinst:
+    + Fix log re-opening issue due to wrong /var/log/nginx
+      permissions. (Closes: #734139)
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Sat, 04 Jan 2014 09:41:40 +0200
+
+nginx (1.4.4-3) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * debian/nginx-naxsi-ui.postinst:
+    + Fix early exit issue (Closes: #715435)
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Tue, 31 Dec 2013 11:47:07 +0200
+
+nginx (1.4.4-2) unstable; urgency=low
+
+  [ Michael Lustfield ]
+  * debian/control:
+    + Added Provides: httpd-cgi to packages. (Closes: #701508)
+    + Added other options to nginx depends. (Closes: #729860)
+    + Added Spdy to nginx-full package description.
+  * debian/nginx-common.nginx.init:
+    + Added missing line from patch. (Closes: #728103)
+  * debian/conf/sites-available/default:
+    + Changed ssl_protocols and ssl_ciphers. (Closes: 730142)
+  * debian/nginx-common.preinst:
+    + Modify permissions of /var/log/nginx. (Closes: #701112)
+  * debian/rules:
+    + Added spdy support to nginx-full. (Closes: #730432)
+
+  [ Christos Trochalakis ]
+  * debian/nginx-doc,docs, debian/nginx-common.NEWS:
+    + Ship NEWS with nginx-common instead of nginx-doc.
+  * debian/conf/proxy_params:
+    + Host header should be passed unmodified to the proxied server.
+    + Pass X-Forwarded-Proto header to the proxied server.
+  * debian/control:
+    + Fix nginx-naxsi-ui Depends and Conflicts lines.
+
+  [ Neutron Soutmun ]
+  * debian/patches/guard-use-of-deprecated-openssl-definition.patch:
+    + Fix FTBFS against the recent libssl-dev. (Closes: #733107)
+
+  [ Kartik Mistry ]
+  * debian/control:
+    + Updated to Standards-Version 3.9.5
+  * debian/watch, debian/upstream-signing-key.pgp:
+    + Use upstream PGP signature to verify by watch file.
+
+ -- Kartik Mistry <kartik@debian.org>  Fri, 27 Dec 2013 21:16:01 +0530
+
+nginx (1.4.4-1) unstable; urgency=low
+
+  [ Christos Trochalakis ]
+  * New upstream release. (Closes: #730012)
+  * debian/nginx-*.postinst:
+    + Wait for the new master to write its pid file before sending QUIT to the
+      old master. This solves an issue with systemd and the upgrade mechanism.
+      Systemd receives the SIGCHLD from the old master but it can't see the new
+      pid because the new master has not written it yet. As a result, it kills
+      everything inside the cgroup, including the new master.
+  * debian/modules/ngx-fancyindex:
+    + Upgrade Fancy Index module to v0.3.3 (Closes: #728721)
+  * debian/control:
+    + Remove Upload module from nginx-extras description (Closes: #729003)
+
+  [ Michael Lustfield ]
+  * debian/control:
+    + Added spdy to package description (Closes: #728038)
+  * debian/nginx-common.nginx.init:
+    + Showing better start/stop messages. Thanks Pim van den Berg.
+      (Closes: #728103)
+
+ -- Michael Lustfield <michael@lustfield.net>  Thu, 21 Nov 2013 19:25:50 +0530
+
+nginx (1.4.3-2) unstable; urgency=low
+
+  [ Kartik Mistry ]
+  * Renamed debian/nginx-common.service to debian/nginx-common.nginx.service so
+    it is installed properly for systemd. Thanks to Christos Trochalakis.
+  * Set debian/compat to 9 and updated debhelper dependency.
+
+  [ Christos Trochalakis ]
+  * debian/rules, debian/nginx-common.dirs,
+    debian/debian-common.nginx.logrotate:
+    + Switch to dh_installlogrotate.
+  * debian/rules:
+    + *-stamp files are deleted by dh_clean.
+    + Remove unused mime-types target.
+    + Remove not needed config.sub and config.guess targets.
+  * debian/nginx-common.dirs:
+    + Don't ship an empty /run dir.
+  * debian/nginx-{light,full,extras}.lintian-overrides:
+    + Override false lintian spelling error warning.
+
+ -- Kartik Mistry <kartik@debian.org>  Wed, 16 Oct 2013 14:58:11 +0530
+
+nginx (1.4.3-1) unstable; urgency=low
+
+  [ Cyril Lavier ]
+  * debian/nginx-naxsi-ui.postinst, debian/nginx-naxsi-ui.preinst:
+    + Added missing arguments to have clean postinst/preinst scripts.
+  * debian/conf/fastcgi_params:
+    + Defined fastcgi param HTTPS the same as upstream default.
+      (Closes: #712989)
+
+  [ Michael Lustfield ]
+  * conf/sites-available/default:
+    + Removed /doc/ section per bug #715804.
+
+  [ Christos Trochalakis ]
+  * New upstream release. (Closes: #722640)
+  * debian/nginx-common.nginx.init:
+    + Better pidfile extraction from nginx.conf. We now accept multiple
+      spaces and tabs as a field separator.
+  * debian/modules/nginx-auth-pam:
+    + Fixed upstream bug. (Closes: #721702)
+  * debian/watch:
+    + Only check for stable releases.
+  * debian/conf/sites-available/default:
+    + Correctly fallback to 404 when the requested file is missing.
+      (Closes: #724232)
+  * debian/logrotate:
+    + Gracefully handle empty pidfile in logrotate script.
+      (Closes: #696797)
+
+  [ Kartik Mistry ]
+  * Switch to dh-systemd (Closes: #713853)
+
+ -- Kartik Mistry <kartik@debian.org>  Thu, 10 Oct 2013 17:28:56 +0530
+
+nginx (1.4.1-3) unstable; urgency=low
+
+  [ Kartik Mistry ]
+  * debian/control:
+    + Changed libgd2-dev build-dep to libgd2-dev|libgd2-noxpm-dev allow
+      backporting (Closes: #711505)
+
+  [ Cyril Lavier ]
+  * debian/nginx-naxsi-ui.preinst
+    + Added argument "install" to the preinst script. (Closes: #711590)
+
+ -- Kartik Mistry <kartik@debian.org>  Sun, 09 Jun 2013 13:07:52 +0530
+
+nginx (1.4.1-2) unstable; urgency=medium
+
+  [ Kartik Mistry]
+  * Urgency set to medium due to Security and RC bugs.
+  * debian/conf/sites-available/default:
+    + Fixed typo in listen ipv6only=on (Closes: #707684)
+
+  [ Cyril Lavier ]
+  * debian/control:
+    + Replaced the build-dep libgd2-noxpm-dev to libgd2-dev as part of
+      the libgd2-{xpm,noxpm}-dev -> libgd2-dev transition.
+  * debian/nginx-naxsi-ui.preinst, debian/nginx-naxsi-ui.postinst,
+    debian/conf/naxsi-ui.conf.1.4.1:
+    + Added preinst script and renamed the new config file to avoid
+      prompting the user. (Closes: #707291)
+  * debian/rules:
+    + Made "debian/rules binary" enough to build binary package.
+      (Closes: #708522)
+
+ -- Kartik Mistry <kartik@debian.org>  Thu, 06 Jun 2013 12:55:23 +0530
+
+nginx (1.4.1-1) unstable; urgency=low
+
+  * New upstream release:
+    + Fixes arbitrary code execution (CVE-2013-2028).
+  * Uploaded to unstable.
+  * debian/control:
+    + Updated Standards-Version to 3.9.4
+
+ -- Kartik Mistry <kartik@debian.org>  Tue, 07 May 2013 19:53:46 +0530
+
+nginx (1.4.0-2) experimental; urgency=low
+
+  [ Ondřej Surý ]
+  * debian/modules/:
+    + Updated nginx-echo, nginx-cache-purge and naxsi modules.
+    + Removed useless .gitignore, .gitmodules files.
+
+  [ Kartik Mistry ]
+  * debian/modules/nginx-upload:
+    + This module no longer works with 1.3.x and above. Removed as of now.
+  * debian/modules/ngx-fancyindex:
+    + Added Fancy Indexes module (Closes: #704210)
+  * debian/copyright:
+    + Fixed path for modules in Files: field.
+    + Updated copyright for debian/*
+  * debian/rules:
+    + Enabled spdy module (Closes: #706195).
+  * debian/control:
+    + Suggests: fcgiwrap (Closes: #701508).
+
+  [ Cyril Lavier ]
+  * debian/conf/naxsi-ui.conf:
+    + Added configuration file for nginx-naxsi-ui using SQLite
+      (Closes: #699678).
+  * debian/nginx-naxsi-ui.config, debian/nginx-naxsi-ui.postinst,
+    debian/nginx-naxsi-ui.postrm, debian/nginx-naxsi-ui.prerm,
+    debian/nginx-naxsi-ui.templates:
+    + Removed these files as they are not necessary anymore with the
+      database engine switching from MySQL to SQLite.
+  * debian/control:
+    + Removed dependencies against MySQL.
+  * debian/rules, debian/modules/ngx_http_substitutions_filter_module,
+    debian/README.Modules-versions:
+    + Added http_substitutions_filter module. (Closes: #706456)
+
+ -- Kartik Mistry <kartik@debian.org>  Wed, 01 May 2013 10:48:43 +0530
+
+nginx (1.4.0-1) experimental; urgency=low
+
+  [ Kartik Mistry ]
+  * New upstream release (Closes: #706127).
+  * debian/rules, debian/modules/:
+    + Removed chunkin-nginx-module as it no longer supported for nginx 1.3.9+
+    + Updated nginx-lua module to 0.8.0
+    + Patched nginx-upload module as described in modules/README file.
+  * Refreshed debian/patches/perl-use-dpkg-buildflags.patch
+  * debian/logrotate:
+    + Set default log to keep for 52 weeks instead of 52 days. Thanks to
+      RjY <rjy@users.sourceforge.net> for patch (Closes: #696440)
+  * debian/rules:
+    + Added cache purge module to nginx-extras.
+  * debian/control:
+    + Suggests: nginx-docs. Thanks to colliar <colliar4ever@aol.com> for
+      reporting bug (Closes: #702923)
+  * debian/copyright:
+    + Updated copyright year.
+    + Fixed broken license text.
+
+  [ Michael Lustfield ]
+  * debian/conf/sites-available/default:
+    + Added ipv6_only=on to default server block. (Closes: #700857)
+    + Added default_server to ipv4 default server block. Now matches ipv6.
+  * debian/rules:
+    + Removed obsolete --with-md5 and --with-sha1
+
+ -- Kartik Mistry <kartik@debian.org>  Thu, 25 Apr 2013 12:51:45 +0530
+
+nginx (1.2.6-1) unstable; urgency=low
+
+  [ Kartik Mistry ]
+  * New upstream release.
+  * debian/nginx-common.nginx.init:
+    + Used log_*_msg instead of echo for better init messages.
+    + Added patch to check start-stop-daemon exit status, Thanks to
+      Sergey B Kirpichev <skirpichev@gmail.com> (Closes: #695374).
+  * debian/po/ja.po:
+    + Added new Japanese translation. Thanks to victory <victory.deb@gmail.com>
+      (Closes: #692481).
+  * debian/po/pt_BR.po:
+    + Added new Brazilian Portuguese translation. Thanks to
+      Adriano Rafael Gomes <adrianorg@gmail.com> (Closes: #692481).
+
+  [ Cyril Lavier ]
+  * debian/rules
+    + Added RealIP module in nginx-naxsi (Closes: #693302).
+  * debian/modules/nginx-cache-purge/
+    + Updated nginx-cache-purge module with the 2.0 version.
+  * debian/modules/nginx-lua/
+    + Updated nginx-lua module with the 0.7.8 version.
+  * debian/modules/nginx-echo/
+    + Updated the nginx-echo module with the 0.41 version.
+  * debian/modules/headers-more-nginx-module/
+    + Updated the Headers-more module with the 0.19 version.
+  * debian/modules/README.Modules-versions
+    + Updated the current version of modules following the updates.
+
+  [ Michael Lustfield ]
+  * debian/conf/sites-available/default
+    + Uncommented listen lines to make server block default.
+
+ -- Kartik Mistry <kartik@debian.org>  Tue, 18 Dec 2012 10:29:18 +0530
+
+nginx (1.2.4-2) unstable; urgency=low
+
+  * debian/conf/nginx.conf:
+    + Fixed pid path to /run/nginx.pid in config.
+  * debian/po/*.po, debian/nginx-naxsi-ui.templates, debian/po/templates.pot:
+    + Fixed ^M characters in template file. Thanks to Christian Perrier
+      <bubulle@debian.org> for help (Closes: #692191, #692335)
+
+ -- Kartik Mistry <kartik@debian.org>  Mon, 05 Nov 2012 13:05:34 +0530
+
+nginx (1.2.4-1) unstable; urgency=low
+
+  [ Michael Lustfield ]
+  * debian/nginx-common.nginx.init
+    + Added --retry to start-stop-daemon. (Closes: #682360)
+    + Added $named to Required-Start/Stop. (Closes: #679879)
+    + Added some other modifications after testing. (LP: #1033856)
+  * debian/rules:
+    + Added -DFORTIFY_SOURCE=2 -fstack-protector to build flags.
+      (Closes: #680712)
+  * debian/nginx-common.install:
+    + Moved default docs to /usr/share/nginx/html. (Closes: #1031515)
+  * debian/rules:
+    + Set prefix to /usr/share/nginx.
+  * debian/po/fr.po
+    + Updated French translation file. (Closes: #679601)
+  * debian/logrotate:
+    + Removed semicolon after an fi statement. (Closes: #683870)
+  * debian/copyright:
+    + Removed trailing slash from File: fields.
+  * Changed /var/run to /run in multiple files. (LP: #1050516)
+  * debian/nginx-common.dirs:
+    + Added /run to .dirs to avoid conflicts with backports. (LP: #1072641)
+  * debian/nginx-*.postinst:
+    + Added sites-enabled/available directory checks. (Closes: #688410)
+      - Thanks Andreas Marschke <andreas.marschke@gmail.com>
+    + Moved the symlink creation to nginx-common.
+  * Updated debconf templates.
+  * conf/sites-available/default:
+    + Updated root to point at /usr/share/nginx/html instead of www.
+
+  [ Kartik Mistry ]
+  * Acknowledged NMUs (Closes: #681758, #681381)
+  * New upstream release (Closes: #683704)
+  * debian/po/*.po:
+    + Removed ^M characters from headers.
+    + Fixed all files with recent unneeded template change.
+
+ -- Kartik Mistry <kartik@debian.org>  Tue, 30 Oct 2012 10:10:34 +0530
 
 nginx (1.2.1-2.2) unstable; urgency=low
 

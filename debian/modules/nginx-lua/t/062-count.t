@@ -1,6 +1,6 @@
 # vim:set ft= ts=4 sw=4 et fdm=marker:
 use lib 'lib';
-use Test::Nginx::Socket;
+use Test::Nginx::Socket::Lua;
 
 #worker_connections(1014);
 #master_on();
@@ -8,7 +8,7 @@ use Test::Nginx::Socket;
 #log_level('warn');
 no_root_location();
 
-repeat_each(2);
+#repeat_each(2);
 
 plan tests => repeat_each() * (blocks() * 3);
 
@@ -35,7 +35,7 @@ __DATA__
 --- request
 GET /test
 --- response_body
-ngx: 88
+ngx: 97
 --- no_error_log
 [error]
 
@@ -56,7 +56,7 @@ ngx: 88
 --- request
 GET /test
 --- response_body
-72
+97
 --- no_error_log
 [error]
 
@@ -84,7 +84,7 @@ GET /test
 --- request
 GET /test
 --- response_body
-n = 72
+n = 97
 --- no_error_log
 [error]
 
@@ -124,7 +124,7 @@ n = 1
 --- request
 GET /test
 --- response_body
-n = 16
+n = 23
 --- no_error_log
 [error]
 
@@ -146,7 +146,7 @@ n = 16
 --- request
 GET /test
 --- response_body
-n = 9
+n = 23
 --- no_error_log
 [error]
 
@@ -173,7 +173,7 @@ n = 9
 --- request
 GET /test
 --- response_body
-n = 9
+n = 23
 --- no_error_log
 [error]
 
@@ -213,13 +213,14 @@ n = 2
 --- request
 GET /test
 --- response_body
-n = 2
+n = 3
 --- no_error_log
 [error]
 
 
 
 === TEST 10: entries under ngx._tcp_meta
+--- SKIP
 --- config
         location = /test {
             content_by_lua '
@@ -240,6 +241,7 @@ n = 10
 
 
 === TEST 11: entries under ngx._reqsock_meta
+--- SKIP
 --- config
         location = /test {
             content_by_lua '
@@ -277,7 +279,142 @@ n = 4
 --- request
 GET /test
 --- response_body
-n = 8
+n = 13
+--- no_error_log
+[error]
+
+
+
+=== TEST 13: entries under ngx. (log by lua)
+--- config
+    location = /t {
+        log_by_lua '
+            local n = 0
+            for k, v in pairs(ngx) do
+                n = n + 1
+            end
+            ngx.log(ngx.ERR, "ngx. entry count: ", n)
+        ';
+    }
+--- request
+GET /t
+--- response_body_like: 404 Not Found
+--- error_code: 404
+--- error_log
+ngx. entry count: 97
+
+
+
+=== TEST 14: entries under ngx.timer
+--- config
+        location = /test {
+            content_by_lua '
+                local n = 0
+                for k, v in pairs(ngx.timer) do
+                    n = n + 1
+                end
+                ngx.say("n = ", n)
+            ';
+        }
+--- request
+GET /test
+--- response_body
+n = 1
+--- no_error_log
+[error]
+
+
+
+=== TEST 15: entries under ngx.config
+--- config
+        location = /test {
+            content_by_lua '
+                local n = 0
+                for k, v in pairs(ngx.config) do
+                    n = n + 1
+                end
+                ngx.say("n = ", n)
+            ';
+        }
+--- request
+GET /test
+--- response_body
+n = 4
+--- no_error_log
+[error]
+
+
+
+=== TEST 16: entries under ngx.re
+--- config
+        location = /test {
+            content_by_lua '
+                local n = 0
+                for k, v in pairs(ngx.re) do
+                    n = n + 1
+                end
+                ngx.say("n = ", n)
+            ';
+        }
+--- request
+GET /test
+--- response_body
+n = 5
+--- no_error_log
+[error]
+
+
+
+=== TEST 17: entries under coroutine. (content by lua)
+--- config
+        location = /test {
+            content_by_lua '
+                local n = 0
+                for k, v in pairs(coroutine) do
+                    n = n + 1
+                end
+                ngx.say("coroutine: ", n)
+            ';
+        }
+--- request
+GET /test
+--- stap2
+global c
+probe process("$LIBLUA_PATH").function("rehashtab") {
+    c++
+    printf("rehash: %d\n", c)
+}
+--- stap_out2
+3
+--- response_body
+coroutine: 14
+--- no_error_log
+[error]
+
+
+
+=== TEST 18: entries under ngx.thread. (content by lua)
+--- config
+        location = /test {
+            content_by_lua '
+                local n = 0
+                for k, v in pairs(ngx.thread) do
+                    n = n + 1
+                end
+                ngx.say("thread: ", n)
+            ';
+        }
+--- request
+GET /test
+--- stap2
+global c
+probe process("$LIBLUA_PATH").function("rehashtab") {
+    c++
+    printf("rehash: %d\n", c)
+}
+--- stap_out2
+--- response_body
+thread: 2
 --- no_error_log
 [error]
 
