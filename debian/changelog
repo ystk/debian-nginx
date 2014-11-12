@@ -1,3 +1,14 @@
+nginx (0.7.67-3+squeeze4) squeeze-lts; urgency=high
+
+  * LTS upload.
+  * CVE-2014-3616: "it was possible to reuse SSL sessions in unrelated
+    contexts if a shared SSL session cache or the same TLS session ticket
+    key was used for multiple "server" blocks".  Well, now it ain't.
+  * Patch auto/os/linux to account for newer kernel versions that are
+    formatted differently.
+
+ -- Matt Palmer <mpalmer@debian.org>  Wed, 17 Sep 2014 08:25:20 +1000
+
 nginx (0.7.67-3+squeeze3) stable-security; urgency=high
 
   * debian/patches/CVE-2012-4929.diff:
