@@ -10,7 +10,7 @@ README for Modules versions
 
  nginx-development-kit
   https://github.com/simpl/ngx_devel_kit/
-  Version: v0.2.17-7-g24202b4
+  Version: v0.2.19
 
  nginx-auth-pam
   http://web.iti.upv.es/~sto/nginx/
@@ -18,12 +18,12 @@ README for Modules versions
 
  nginx-echo
   https://github.com/agentzh/echo-nginx-module
-  Version: v0.51
+  Version: v0.56
 
  nginx-lua
   Homepage: https://github.com/chaoslawful/lua-nginx-module
   https://github.com/chaoslawful/lua-nginx-module.git
-  Version: v0.9.4
+  Version: v0.9.12
 
  nginx-upstream-fair
   Homepage: https://github.com/gnosek/nginx-upstream-fair
@@ -32,17 +32,13 @@ README for Modules versions
  nginx-push
   Homepage: http://pushmodule.slact.net/#download
   https://github.com/slact/nginx_http_push_module/archive/v0.711.tar.gz
-  Version: 0.711
+  Version: 0.73
 
  nginx-upload-progress
   Homepage: https://github.com/masterzen/nginx-upload-progress-module
   https://nodeload.github.com/masterzen/nginx-upload-progress-module/tarball/master
   rm -r debian/nginx-upload-progress/test
-  Version: v0.9.0-0-ga788dea
-
- naxsi
-  Homepage: http://code.google.com/p/naxsi/
-  Version: 0.50
+  Version: v0.9.1
 
  nginx-cache-purge
   Homepage: http://labs.frickle.com/nginx_ngx_cache_purge/
@@ -54,7 +50,7 @@ README for Modules versions
 
  ngx-fancyindex
   Homepage: https://github.com/aperezdc/ngx-fancyindex
-  Version: v0.3.3
+  Version: v0.3.4
 
  ngx_http_substitutions_filter_module
   Homepage: https://github.com/yaoweibin/ngx_http_substitutions_filter_module

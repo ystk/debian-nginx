@@ -1,3 +1,116 @@
+nginx (1.6.2-5) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * debian/conf/nginx.conf:
+    + Drop SSLv3 protocol (POODLE), and prefer server ciphers
+      by default. (Closes: #767456)
+  * debian/copyright:
+    + Add copyright for ngx_http_substitutions_filter_module.
+  * debian/nginx-common.{preinst,postinst,postrm}:
+    + Remove /etc/nginx/naxsi-ui.conf conffile. (Closes: #768233)
+  * debian/README.Debian:
+    + Add a list of important changes since wheezy.
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Sun, 30 Nov 2014 10:39:55 +0200
+
+nginx (1.6.2-4) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * debian/modules/nginx-development-kit:
+    + Upgrade v0.2.17-7-g24202b4 -> v0.2.19
+  * debian/modules/nginx-echo:
+    + Upgrade v0.51 -> v0.56
+  * debian/modules/nginx-upload-progress:
+    + Upgrade v0.9.0-0-ga788dea -> 0.9.1
+  * debian/modules/ngx-fancy-index:
+    + Upgrade v0.3.3 -> v0.3.4
+  * debian/copyright:
+    + Rewrite copyright file fixing various issues.
+  * debian/nginx-common.nginx.logrotate:
+    + Switch postrotate to the initscript's rotate command.
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Sun, 19 Oct 2014 08:23:33 +0300
+
+nginx (1.6.2-3) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * Change the default document root to /var/www/html according to debian
+    policy 3.9.6.0. (Closes: #730382)
+  * Provide a new, debian specific, default landing page.
+  * debian/nginx-common.nginx.service:
+    + Graceful stopping of nginx was not handled correctly with systemd.
+  * debian/nginx-common.nginx.init:
+    + Gracefully stop nginx by default, we are switcing to a configurable
+      STOP/5/TERM/5/KILL/5 schedule. We are now in sync with the systemd
+      service file. (Closes: #762708)
+  * debian/conf:
+    + Introduce a `snippets/fastcgi-php.conf` snippet with a basic
+      php configuration that can be included when needed. (Closes: #762491)
+    + Introduce a `snippets/snakeoil.conf` snippet that enabled https
+      using the certs installed by the ssl-cert package.
+    + Suggest disabling SSLv3 in default site with a ref to POODLE.
+  * debian/control:
+    + nginx-common now suggests ssl-cert.
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Thu, 16 Oct 2014 13:34:29 +0300
+
+nginx (1.6.2-2) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * Drop nginx-naxsi, nginx-naxsi-dbg, nginx-naxsi-ui packages.
+    (Closes: #746199, #737146, #712445)
+  * debian/conf/nginx.conf:
+    + Remove relic passenger stanga.
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Fri, 26 Sep 2014 11:06:47 +0300
+
+nginx (1.6.2-1) unstable; urgency=high
+
+  [ Christos Trochalakis ]
+  * New upstream release.
+    CVE-2014-3616: "it was possible to reuse SSL sessions in unrelated
+    contexts if a shared SSL session cache or the same TLS session ticket
+    key was used for multiple "server" blocks".
+    (Closes: #761940)
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Wed, 17 Sep 2014 11:19:01 +0300
+
+nginx (1.6.1-2) unstable; urgency=medium
+
+  [ Christos Trochalakis ]
+  * debian/control:
+    + Build nginx-extras against luajit (Closes: #755875)
+  * debian/modules/nginx-lua:
+    + Update nginx-lua to v0.9.12
+  * debian/nginx-common.nginx.init:
+    + Better pidfile extraction from nginx.conf (Closes: #747329)
+  * debian/conf/mime.types:
+    + Upgrade to the latest upstream mime types.
+      As a consequence, nginx now uses "application/javascript" for
+      javascript files.
+  * debian/conf/nginx.conf:
+    + Add application/javascript to the gzip_types list. (Closes: #737176)
+  * debian/rules:
+    + Make naxsi module first in configure parameters.
+      Fixes erratic naxsi behaviour. (Closes: #758642)
+  * debian/conf/{koi-utf,koi-win,scgi_params,uwsgi_params}:
+    + Sync with upstream config files.
+  * debian/conf/fastcgi_params:
+    + Sync with upstream and remove `SCRIPT_FILENAME` parameter.
+      This change might break fastcgi sites. (Closes: #718639)
+  + debian/conf/fastcgi.conf:
+    + Ship upstream file.
+  * debian/nginx-common.NEWS:
+    + Document syncing conf files with upstream.
+  * debian/tests/control:
+    + Include some simple autopkgtests.
+      Thanks to Robie Basak for the initial patch. (Closes: #756391)
+  * debian/modules/nginx-http-push:
+    + Update to v0.73.
+      Fixes fd leak on reload. (Closes: #745921)
+
+ -- Christos Trochalakis <yatiohi@ideopolis.gr>  Thu, 04 Sep 2014 13:00:46 +0300
+
 nginx (1.6.1-1) unstable; urgency=medium
 
   [ Christos Trochalakis ]
