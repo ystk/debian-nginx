@@ -6,3 +6,4 @@ CVE-2012-1180.diff
 CVE-2012-4929.diff
 CVE-2014-3616.diff
 fix_kernel_version_detection.diff
+CVE-2016-0742.diff

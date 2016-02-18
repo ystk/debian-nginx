@@ -1,3 +1,11 @@
+nginx (0.7.67-3+squeeze4+deb6u1) squeeze-lts; urgency=high
+
+  * CVE-2016-0742: Invalid pointer dereference might occur during DNS server
+    response processing, allowing an attacker who is able to forge UDP packets
+    from the DNS server to cause worker process crash. (Closes: #812806)
+
+ -- Chris Lamb <lamby@debian.org>  Wed, 27 Jan 2016 09:58:15 +0100
+
 nginx (0.7.67-3+squeeze4) squeeze-lts; urgency=high
 
   * LTS upload.
