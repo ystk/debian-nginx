@@ -1,3 +1,15 @@
+nginx (1.6.2-5+deb8u7) jessie-security; urgency=high
+
+  * Non-maintainer upload by the ELTS Security Team.
+  * CVE-2019-20372: NGINX, with certain error_page configurations, allows
+    HTTP request smuggling, as demonstrated by the ability of an attacker
+    to read unauthorized web pages in environments where NGINX is being
+    fronted by a load balancer.
+  * CVE-2020-11724: ngx_http_lua_subrequest.c allows HTTP request
+    smuggling, as demonstrated by the ngx.location.capture API.
+
+ -- Sylvain Beucler <beuc@debian.org>  Mon, 13 Jul 2020 15:28:13 +0200
+
 nginx (1.6.2-5+deb8u6) jessie-security; urgency=high
 
   * CVE-2018-16845: Prevent a denial of service vulnerability due to an integer
