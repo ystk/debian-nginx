@@ -10,3 +10,5 @@ CVE-2017-7529-Range-filter.patch
 CVE-2018-16845.patch
 CVE-2019-20372.patch
 #CVE-2020-11724.patch # pre-applied to debian/modules/
+CVE-2021-23017-1.patch
+CVE-2021-23017-2.patch

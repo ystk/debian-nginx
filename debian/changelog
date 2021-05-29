@@ -1,3 +1,15 @@
+nginx (1.6.2-5+deb8u8) jessie-security; urgency=high
+
+  * Non-maintainer upload by the ELTS team.
+  * SECURITY UPDATE: DNS Resolver issues
+    - debian/patches/CVE-2021-23017-1.patch: fixed off-by-one write in
+      src/core/ngx_resolver.c.
+    - debian/patches/CVE-2021-23017-2.patch: fixed off-by-one read in
+      src/core/ngx_resolver.c.
+    - CVE-2021-23017
+
+ -- Utkarsh Gupta <utkarsh.gupta@canonical.com>  Sat, 29 May 2021 20:58:27 +0530
+
 nginx (1.6.2-5+deb8u7) jessie-security; urgency=high
 
   * Non-maintainer upload by the ELTS Security Team.
